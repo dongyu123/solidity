@@ -446,46 +446,8 @@ bool ASTBoogieExpressionConverter::visit(FunctionCall const& _node)
 	// First, process the expression of the function call, which should give:
 	// - The name of the called function in 'm_currentExpr'
 	// - The address on which the function is called in 'm_currentAddress'
-	// - The msg.value in 'm_currentMsgValue'
 	// Example: f(z) gives 'f' as the name and 'this' as the address
 	// Example: x.f(z) gives 'f' as the name and 'x' as the address
-	// Example: x.f.value(y)(z) gives 'f' as the name, 'x' as the address and 'y' as the value
-
-	// Check for the special case of calling the 'value' function
-	// For example x.f.value(y)(z) should be treated as x.f(z), while setting
-	// 'm_currentMsgValue' to 'y'.
-	if (auto exprMa = dynamic_cast<MemberAccess const*>(&_node.expression()))
-	{
-		if (exprMa->expression().annotation().type->category() == Type::Category::Function && exprMa->memberName() == "value")
-		{
-			// Process the argument
-			solAssert(_node.arguments().size() == 1, "Call to the value function should have exactly one argument");
-			auto arg = *_node.arguments().begin();
-			arg->accept(*this);
-			m_currentMsgValue = m_currentExpr;
-			if (m_context.isBvEncoding())
-			{
-				TypePointer tp_uint256 = TypeProvider::integer(256, IntegerType::Modifier::Unsigned);
-				m_currentMsgValue = ASTBoogieUtils::checkImplicitBvConversion(m_currentMsgValue,
-						arg->annotation().type, tp_uint256, m_context);
-			}
-
-			// Continue with the rest of the AST
-			exprMa->expression().accept(*this);
-			return false;
-		}
-	}
-
-	// Ignore gas setting, e.g., x.f.gas(y)(z) is just x.f(z)
-	if (auto exprMa = dynamic_cast<MemberAccess const*>(&_node.expression()))
-	{
-		if (exprMa->memberName() == "gas")
-		{
-			m_context.reportWarning(exprMa, "Ignored call to gas() function.");
-			exprMa->expression().accept(*this);
-			return false;
-		}
-	}
 
 	m_currentExpr = nullptr;
 	m_currentAddress = m_context.boogieThis()->getRefTo();
@@ -876,6 +838,36 @@ bool ASTBoogieExpressionConverter::visit(FunctionCall const& _node)
 	if (funcName == ASTBoogieUtils::CALL.boogie && msgValue != defaultMsgValue)
 		functionCallRevertBalance(msgValue);
 
+	return false;
+}
+
+bool ASTBoogieExpressionConverter::visit(FunctionCallOptions const& _node)
+{
+	solAssert(_node.names().size() == _node.options().size(), "Different number of option names and arguments");
+	for (size_t i = 0; i < _node.names().size(); ++i)
+	{
+		auto name = *_node.names()[i];
+		auto arg = _node.options()[i];
+		arg->accept(*this); // Process argument recursively
+		// Different options need to be treated differently
+		if (name == "value")
+		{
+			// store the value so that the function call above can process it
+			m_currentMsgValue = m_currentExpr;
+			if (m_context.isBvEncoding())
+			{
+				TypePointer tp_uint256 = TypeProvider::integer(256, IntegerType::Modifier::Unsigned);
+				m_currentMsgValue = ASTBoogieUtils::checkImplicitBvConversion(m_currentMsgValue,
+						arg->annotation().type, tp_uint256, m_context);
+			}
+		}
+		else // Ignore others with warning
+		{
+			m_context.reportWarning(&_node, "Ignored option '" + name + "'.");
+		}
+	}
+	// Process the inner expression recursively
+	_node.expression().accept(*this);
 	return false;
 }
 
