@@ -1527,6 +1527,13 @@ bool ASTBoogieExpressionConverter::visit(IndexAccess const& _node)
 	return false;
 }
 
+bool ASTBoogieExpressionConverter::visit(IndexRangeAccess const& _node)
+{
+	m_context.reportError(&_node, "Array slices are not yet supported");
+	m_currentExpr = bg::Expr::error();
+	return false;
+}
+
 bool ASTBoogieExpressionConverter::visit(Identifier const& _node)
 {
 	if (_node.name() == ASTBoogieUtils::VERIFIER_SUM)

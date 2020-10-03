@@ -1090,6 +1090,14 @@ bool ASTBoogieConverter::visit(ParameterList const& _node)
 	return false;
 }
 
+bool ASTBoogieConverter::visit(OverrideSpecifier const& _node)
+{
+	rememberScope(_node);
+
+	solAssert(false, "Unhandled node: OverrideSpecifier");
+	return false;
+}
+
 bool ASTBoogieConverter::visit(FunctionDefinition const& _node)
 {
 	rememberScope(_node);
@@ -1597,6 +1605,23 @@ bool ASTBoogieConverter::visit(IfStatement const& _node)
 	return false;
 }
 
+
+bool ASTBoogieConverter::visit(TryCatchClause const& _node)
+{
+	rememberScope(_node);
+
+	solAssert(false, "Unhandled node: TryCatchClause");
+	return false;
+}
+
+bool ASTBoogieConverter::visit(TryStatement const& _node)
+{
+	rememberScope(_node);
+
+	m_context.reportError(&_node, "Try-catch is not yet supported");
+	return false;
+}
+
 bool ASTBoogieConverter::visit(WhileStatement const& _node)
 {
 	rememberScope(_node);
@@ -2015,6 +2040,13 @@ bool ASTBoogieConverter::visit(ExpressionStatement const& _node)
 	return false;
 }
 
+bool ASTBoogieConverter::visit(StructuredDocumentation const& _node)
+{
+	rememberScope(_node);
+
+	solAssert(false, "Unhandled node: StructuredDocumentation");
+	return false;
+}
 
 bool ASTBoogieConverter::visitNode(ASTNode const& _node)
 {

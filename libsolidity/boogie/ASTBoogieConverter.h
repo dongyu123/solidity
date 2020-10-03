@@ -211,6 +211,7 @@ public:
 	bool visit(EnumDefinition const& _node) override;
 	bool visit(EnumValue const& _node) override;
 	bool visit(ParameterList const& _node) override;
+	bool visit(OverrideSpecifier const& _node) override;
 	bool visit(FunctionDefinition const& _node) override;
 	bool visit(VariableDeclaration const& _node) override;
 	bool visit(ModifierDefinition const& _node) override;
@@ -227,6 +228,8 @@ public:
 	bool visit(Block const& _node) override;
 	bool visit(PlaceholderStatement const& _node) override;
 	bool visit(IfStatement const& _node) override;
+	bool visit(TryCatchClause const& _node) override;
+	bool visit(TryStatement const& _node) override;
 	bool visit(WhileStatement const& _node) override;
 	bool visit(ForStatement const& _node) override;
 	bool visit(Continue const& _node) override;
@@ -238,6 +241,9 @@ public:
 	bool visit(ExpressionStatement const& _node) override;
 
 	// Expressions are handled by a separate class
+
+	// Documentation
+	bool visit(StructuredDocumentation const& _node) override;
 
 	bool visitNode(ASTNode const&) override;
 
