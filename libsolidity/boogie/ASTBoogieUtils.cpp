@@ -29,8 +29,8 @@ ASTBoogieUtils::SolidityID const ASTBoogieUtils::SUPER = { "super", "__super" };
 ASTBoogieUtils::SolidityID const ASTBoogieUtils::THIS = { "this", "__this" };
 ASTBoogieUtils::SolidityID const ASTBoogieUtils::SENDER = { "sender", "__msg_sender" };
 ASTBoogieUtils::SolidityID const ASTBoogieUtils::VALUE = { "value", "__msg_value" };
-ASTBoogieUtils::SolidityID const ASTBoogieUtils::NOW = { "now", "__now" };
 ASTBoogieUtils::SolidityID const ASTBoogieUtils::BLOCKNO = { "number", "__block_number" };
+ASTBoogieUtils::SolidityID const ASTBoogieUtils::BLOCKTS = { "timestamp", "__block_timestamp" };
 
 string const ASTBoogieUtils::SOLIDITY_ASSERT = "assert";
 string const ASTBoogieUtils::SOLIDITY_REQUIRE = "require";

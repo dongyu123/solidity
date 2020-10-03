@@ -1298,6 +1298,13 @@ bool ASTBoogieExpressionConverter::visit(MemberAccess const& _node)
 		addTCC(m_currentExpr, tp_uint256, "", false);
 		return false;
 	}
+	// block.timestamp
+	if (isBlock && _node.memberName() == ASTBoogieUtils::BLOCKTS.solidity)
+	{
+		m_currentExpr = bg::Expr::id(ASTBoogieUtils::BLOCKTS.boogie);
+		addTCC(m_currentExpr, tp_uint256, "", false);
+		return false;
+	}
 	// array.length
 	bool isArray = type->category() == Type::Category::Array;
 	if (isArray && _node.memberName() == "length")

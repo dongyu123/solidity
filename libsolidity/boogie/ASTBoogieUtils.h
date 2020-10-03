@@ -43,8 +43,8 @@ public:
 	static SolidityID const VALUE;
 
 	// Other special identifiers
-	static SolidityID const NOW;
 	static SolidityID const BLOCKNO;
+	static SolidityID const BLOCKTS;
 
 	// Error handling
 	static std::string const SOLIDITY_ASSERT;

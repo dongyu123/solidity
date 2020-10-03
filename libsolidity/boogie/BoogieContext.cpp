@@ -105,10 +105,9 @@ BoogieContext::BoogieContext(Encoding encoding,
 	m_boogieThis = bg::Decl::variable(ASTBoogieUtils::THIS.boogie, addressType());
 	m_boogieMsgSender = bg::Decl::variable(ASTBoogieUtils::SENDER.boogie, addressType());
 	m_boogieMsgValue = bg::Decl::variable(ASTBoogieUtils::VALUE.boogie, intType(256));
-	// now
-	addDecl(bg::Decl::variable(ASTBoogieUtils::NOW.boogie, intType(256)));
-	// block number
+	// block number and timestamp
 	addDecl(bg::Decl::variable(ASTBoogieUtils::BLOCKNO.boogie, intType(256)));
+	addDecl(bg::Decl::variable(ASTBoogieUtils::BLOCKTS.boogie, intType(256)));
 	// overflow
 	if (m_overflow)
 		addDecl(bg::Decl::variable(ASTBoogieUtils::VERIFIER_OVERFLOW, boolType()));
@@ -347,8 +346,8 @@ string BoogieContext::mapDeclName(Declaration const& decl)
 		if (name == ASTBoogieUtils::THIS.solidity) return ASTBoogieUtils::THIS.boogie;
 		if (name == ASTBoogieUtils::SENDER.solidity) return ASTBoogieUtils::SENDER.boogie;
 		if (name == ASTBoogieUtils::VALUE.solidity) return ASTBoogieUtils::VALUE.boogie;
-		if (name == ASTBoogieUtils::NOW.solidity) return ASTBoogieUtils::NOW.boogie;
 		if (name == ASTBoogieUtils::BLOCKNO.solidity) return ASTBoogieUtils::BLOCKNO.boogie;
+		if (name == ASTBoogieUtils::BLOCKTS.solidity) return ASTBoogieUtils::BLOCKTS.boogie;
 	}
 
 	// ID is important to append, since (1) even fully qualified names can be
