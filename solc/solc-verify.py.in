@@ -127,8 +127,8 @@ def verifyAll(bplFile, args):
                     "args": args
                 })
     # Verify
-    p = multiprocessing.Pool(args.parallel)
-    verifierOutputList = p.map(verifyProcedure, verifyProcedureArgs)
+    with multiprocessing.Pool(args.parallel) as p:
+       verifierOutputList = p.map(verifyProcedure, verifyProcedureArgs)
 
     # Join results
     verifierOutputStr = ""
