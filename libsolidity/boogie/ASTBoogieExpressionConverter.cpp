@@ -1565,7 +1565,7 @@ bool ASTBoogieExpressionConverter::visit(Identifier const& _node)
 
 	// State variables must be referenced by accessing the map
 	// Unless it's a declaration within a specification (scope == nullptr)
-	if (varDecl && varDecl->isStateVariable() && varDecl->scope())
+	if (varDecl && varDecl->isStateVariable())
 		m_currentExpr = bg::Expr::arrsel(bg::Expr::id(declName), m_context.boogieThis()->getRefTo());
 	// Other identifiers can be referenced by their name
 	else

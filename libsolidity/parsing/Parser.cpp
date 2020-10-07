@@ -1118,7 +1118,8 @@ ASTPointer<VariableDeclaration> Parser::parseSpecificationVariableDeclaration(AS
 	}
 
 	// Set location for complex types and check for errors
-	bool isStateVariable = false;
+	bool isIndexed = false;
+	VariableDeclaration::Location referenceLocation = VariableDeclaration::Unspecified;
 	if (dynamic_cast<ElementaryTypeName*>(type.get()))
 	{
 		// Elementary types are OK
@@ -1126,12 +1127,12 @@ ASTPointer<VariableDeclaration> Parser::parseSpecificationVariableDeclaration(AS
 	else if (dynamic_cast<Mapping*>(type.get()))
 	{
 		// Mappings are OK, but we mark as storage
-		isStateVariable = true;
+		referenceLocation = VariableDeclaration::Storage;
 	}
 	else if (dynamic_cast<ArrayTypeName*>(type.get()))
 	{
 		// Arrays are OK, but we mark as storage
-		isStateVariable = true;
+		referenceLocation = VariableDeclaration::Storage;
 	}
 	else
 	{
@@ -1139,18 +1140,19 @@ ASTPointer<VariableDeclaration> Parser::parseSpecificationVariableDeclaration(AS
 		parserError(5674_error, "Unsupported type for quantifier variable.");
 	}
 
-	ASTPointer<ASTString> identifier = expectIdentifierToken();
+	ASTPointer<ASTString> name = expectIdentifierToken();
 	nodeFactory.markEndPosition();
 
 	return nodeFactory.createNode<VariableDeclaration>(
-		type,
-		identifier,
-		nullptr,
-		Visibility::Default,
-		nullptr,
-		isStateVariable,
-		false,
-		VariableDeclaration::Mutability::Mutable
+		type, // type
+		name, // name
+		nullptr, // value
+		Visibility::Default, // visibility
+		nullptr, // documentation
+		isIndexed, // isIndexed
+		VariableDeclaration::Mutability::Mutable, // mutability
+		nullptr, // overrides
+		referenceLocation // referenceLocation
 	);
 }
 

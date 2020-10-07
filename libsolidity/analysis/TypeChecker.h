@@ -62,7 +62,7 @@ public:
 
 	/// Performs type checking on the given node within the given contract
 	/// @returns true iff all checks passed. Note even if all checks passed, errors() can still contain warnings
-	bool checkTypeRequirements(ContractDefinition const& _contract, ASTNode const& _node);
+	bool checkTypeRequirements(SourceUnit const& _source, ContractDefinition const& _contract, ASTNode const& _node);
 
 	/// @returns the type of an expression and asserts that it is present.
 	TypePointer const& type(Expression const& _expression) const;

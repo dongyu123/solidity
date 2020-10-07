@@ -80,11 +80,13 @@ bool TypeChecker::checkTypeRequirements(SourceUnit const& _source, ASTNode const
 	return Error::containsOnlyWarnings(m_errorReporter.errors());
 }
 
-bool TypeChecker::checkTypeRequirements(ContractDefinition const& _contract, ASTNode const& _node)
+bool TypeChecker::checkTypeRequirements(SourceUnit const& _source, ContractDefinition const& _contract, ASTNode const& _node)
 {
+	m_currentSourceUnit = &_source;
 	m_currentContract = &_contract;
 	_node.accept(*this);
 	m_currentContract = nullptr;
+	m_currentSourceUnit = nullptr;
 	return Error::containsOnlyWarnings(m_errorReporter.errors());
 }
 

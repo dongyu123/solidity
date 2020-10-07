@@ -324,7 +324,9 @@ void ASTBoogieConverter::processSpecificationExpression(ASTPointer<Expression> e
 	std::vector<std::vector<bg::Binding>> bgQuantifierVars;
 	std::vector<bg::QuantExpr::Quantifier> bgQuantifierType;
 
-	// Resolve references, using the given scope
+	DeclarationTypeChecker checker(*m_context.errorReporter(), m_context.evmVersion());
+
+	// Add all the quantified variables to the scope
 	auto scopeDecls = m_context.scopes()[_scope];
 	if (specInfo.quantifierList.size() > 0)
 	{
@@ -332,138 +334,150 @@ void ASTBoogieConverter::processSpecificationExpression(ASTPointer<Expression> e
 		if (specInfo.arrayId)
 			m_context.scopes()[specInfo.arrayId.get()] = m_context.scopes()[_scope];
 		NameAndTypeResolver typeResolver(*m_context.globalContext(), m_context.evmVersion(), m_context.scopes(), *m_context.errorReporter());
-		DeclarationTypeChecker checker(*m_context.errorReporter(), m_context.evmVersion());
 		if (specInfo.arrayId)
 			typeResolver.resolveNamesAndTypes(*specInfo.arrayId);
-		// Add all the quantified variables to the scope and create Boogie bindings
+		// Add all the variables to the scope
 		scopeDecls = std::make_shared<DeclarationContainer>(_scope, scopeDecls.get());
 		for (size_t i = 0; i < specInfo.quantifierList.size(); ++ i)
 		{
-			bool isForall = specInfo.isForall[i];
 			auto varsBlock = specInfo.quantifierList[i];
 			// Resolve types of the variables
 			if (typeResolver.resolveNamesAndTypes(*varsBlock))
-			{
-				auto vars = varsBlock->parameters();
-				bgQuantifierVars.push_back({});
-				bgQuantifierType.push_back(isForall ? bg::QuantExpr::Forall : bg::QuantExpr::Exists);
-				for (auto varDecl: vars)
+				for (auto varDecl: varsBlock->parameters())
 				{
-					checker.check(*varDecl);
 					scopeDecls->registerDeclaration(*varDecl);
-					auto varName = m_context.mapDeclName(*varDecl);
-					auto varType = m_context.toBoogieType(varDecl->type(), varDecl.get());
-					auto varExpr = bg::Expr::id(varName);
-					bgQuantifierVars.back().push_back({varExpr, varType});
+					// Manually set the scope and run the checker
+					varDecl->annotation().scope = expr.get();
+					checker.check(*varDecl);
 				}
-			}
 		}
 	}
 	m_context.scopes()[expr.get()] = scopeDecls;
 
+	// Do name resolution
 	NameAndTypeResolver exprResolver(*m_context.globalContext(), m_context.evmVersion(), m_context.scopes(), *m_context.errorReporter());
-	if (exprResolver.resolveNamesAndTypes(*expr))
+	if (!exprResolver.resolveNamesAndTypes(*expr))
+		return;
+
+	// Do type checking
+	TypeChecker typeChecker(m_context.evmVersion(), *m_context.errorReporter());
+	if (!typeChecker.checkTypeRequirements(*m_context.currentSource(), *m_context.currentContract(), *expr))
+		return;
+
+	// Convert all the quantified variables
+	if (specInfo.quantifierList.size() > 0)
 	{
-		// Do type checking
-		TypeChecker typeChecker(m_context.evmVersion(), *m_context.errorReporter());
-		if (typeChecker.checkTypeRequirements(*m_context.currentContract(), *expr))
+		for (size_t i = 0; i < specInfo.quantifierList.size(); ++ i)
 		{
-			// Convert expression to Boogie representation
-			auto convResult = ASTBoogieExpressionConverter(m_context).convert(*expr, true);
-			// Add index bounds if array is there
-			if (specInfo.arrayId)
+			bool isForall = specInfo.isForall[i];
+			auto varsBlock = specInfo.quantifierList[i];
+			auto vars = varsBlock->parameters();
+			bgQuantifierVars.push_back({});
+			bgQuantifierType.push_back(isForall ? bg::QuantExpr::Forall : bg::QuantExpr::Exists);
+			for (auto varDecl: vars)
 			{
-				std::vector<bg::Expr::Ref> guards;
-				solAssert(bgQuantifierType.size() == 1 && bgQuantifierVars.size() == 1, "");
-				solAssert(bgQuantifierType.back() == bg::QuantExpr::Forall, "");
-				auto arrayType = specInfo.arrayId->annotation().referencedDeclaration->type();
-				auto arrayTypeSpec = dynamic_cast<ArrayType const*>(arrayType);
-				if (arrayTypeSpec)
-				{
-					auto arrayBaseType = arrayTypeSpec->baseType();
-					auto arrayBaseTypeBg = m_context.toBoogieType(arrayBaseType, specInfo.arrayId.get());
-					auto arrayExpr = ASTBoogieExpressionConverter(m_context).convert(*specInfo.arrayId, false).expr;
-					auto arrayLocation = arrayTypeSpec->location();
-					if (arrayLocation == DataLocation::Memory || arrayLocation == DataLocation::CallData)
-						arrayExpr = m_context.getMemArray(arrayExpr, arrayBaseTypeBg);
-					auto arrayLength = m_context.getArrayLength(arrayExpr, arrayBaseTypeBg);
-					auto const& bindings = bgQuantifierVars.back();
-					for (auto const& b: bindings)
-					{
-						guards.push_back(bg::Expr::lte(bg::Expr::intlit((unsigned) 0), b.id));
-						guards.push_back(bg::Expr::lt(b.id, arrayLength));
-					}
-					auto guard = bg::Expr::and_(guards);
-					convResult.expr = bg::Expr::impl(guard, convResult.expr);
-				}
-				else
-					m_context.reportError(&_node, "Specification of an array property must be over an array");
+				auto varName = m_context.mapDeclName(*varDecl);
+				auto varType = m_context.toBoogieType(varDecl->type(), varDecl.get());
+				auto varExpr = bg::Expr::id(varName);
+				bgQuantifierVars.back().push_back({varExpr, varType});
 			}
-
-			// Add quantifiers if necessary
-			while (bgQuantifierType.size() > 0)
-			{
-				auto type = bgQuantifierType.back();
-				auto const& bindings = bgQuantifierVars.back();
-
-				// Add any type-checking conditions
-				std::vector<bg::Expr::Ref> bindingConditions;
-				std::vector<bg::Expr::Ref> bindingTCCs;
-				// First, we cannot handle OCs, issue warning
-				if (!convResult.conditions.getConditions(ExprConditionStore::ConditionType::OVERFLOW_CONDITION).empty())
-				{
-					convResult.conditions.removeConditions(ExprConditionStore::ConditionType::OVERFLOW_CONDITION);
-					m_context.reportWarning(&_node, "Annotation generates overflow checking conditions but they are not supported within quantifiers.");
-				}
-				for (auto expr: bindings)
-				{
-					auto varExpr = std::dynamic_pointer_cast<boogie::VarExpr const>(expr.id);
-					auto conditions = convResult.conditions.getConditionsContaining(ExprConditionStore::ConditionType::TYPE_CHECKING_CONDITION, varExpr->getName());
-					bindingConditions.insert(bindingConditions.end(), conditions.begin(), conditions.end());
-					auto tccs = convResult.conditions.getConditionsOn(ExprConditionStore::ConditionType::TYPE_CHECKING_CONDITION, varExpr->getName());
-					bindingTCCs.insert(bindingTCCs.end(), tccs.begin(), tccs.end());
-					convResult.conditions.removeConditions(ExprConditionStore::ConditionType::TYPE_CHECKING_CONDITION, varExpr->getName());
-				}
-
-				switch (type)
-				{
-				case bg::QuantExpr::Forall:
-					if (bindingConditions.size() || bindingTCCs.size())
-					{
-						auto conditions = bg::Expr::and_(bindingConditions);
-						auto tccs = bg::Expr::and_(bindingTCCs);
-						convResult.expr = bg::Expr::and_(conditions, convResult.expr);
-						convResult.expr = bg::Expr::impl(tccs, convResult.expr);
-					}
-					convResult.expr = bg::Expr::forall(bindings, convResult.expr);
-					break;
-				case bg::QuantExpr::Exists:
-					if (bindingConditions.size() || bindingTCCs.size())
-					{
-						auto conditions = bg::Expr::and_(bindingConditions);
-						auto tccs = bg::Expr::and_(bindingTCCs);
-						convResult.expr = bg::Expr::and_(conditions, convResult.expr);
-						convResult.expr = bg::Expr::and_(tccs, convResult.expr);
-					}
-					convResult.expr = bg::Expr::exists(bindings, convResult.expr);
-					break;
-				}
-
-				bgQuantifierType.pop_back();
-				bgQuantifierVars.pop_back();
-			}
-
-			result.expr = convResult.expr;
-			result.conditions = convResult.conditions;
-
-			// Report unsupported cases (side effects)
-			if (!convResult.newStatements.empty())
-				m_context.reportError(&_node, "Annotation expression introduces intermediate statements");
-			if (!convResult.newDecls.empty())
-				m_context.reportError(&_node, "Annotation expression introduces intermediate declarations");
-
 		}
 	}
+
+	// Convert expression to Boogie representation
+	auto convResult = ASTBoogieExpressionConverter(m_context).convert(*expr, true);
+	// Add index bounds if array is there
+	if (specInfo.arrayId)
+	{
+		std::vector<bg::Expr::Ref> guards;
+		solAssert(bgQuantifierType.size() == 1 && bgQuantifierVars.size() == 1, "");
+		solAssert(bgQuantifierType.back() == bg::QuantExpr::Forall, "");
+		auto arrayType = specInfo.arrayId->annotation().referencedDeclaration->type();
+		auto arrayTypeSpec = dynamic_cast<ArrayType const*>(arrayType);
+		if (arrayTypeSpec)
+		{
+			auto arrayBaseType = arrayTypeSpec->baseType();
+			auto arrayBaseTypeBg = m_context.toBoogieType(arrayBaseType, specInfo.arrayId.get());
+			auto arrayExpr = ASTBoogieExpressionConverter(m_context).convert(*specInfo.arrayId, false).expr;
+			auto arrayLocation = arrayTypeSpec->location();
+			if (arrayLocation == DataLocation::Memory || arrayLocation == DataLocation::CallData)
+				arrayExpr = m_context.getMemArray(arrayExpr, arrayBaseTypeBg);
+			auto arrayLength = m_context.getArrayLength(arrayExpr, arrayBaseTypeBg);
+			auto const& bindings = bgQuantifierVars.back();
+			for (auto const& b: bindings)
+			{
+				guards.push_back(bg::Expr::lte(bg::Expr::intlit((unsigned) 0), b.id));
+				guards.push_back(bg::Expr::lt(b.id, arrayLength));
+			}
+			auto guard = bg::Expr::and_(guards);
+			convResult.expr = bg::Expr::impl(guard, convResult.expr);
+		}
+		else
+			m_context.reportError(&_node, "Specification of an array property must be over an array");
+	}
+
+	// Add quantifiers if necessary
+	while (bgQuantifierType.size() > 0)
+	{
+		auto type = bgQuantifierType.back();
+		auto const& bindings = bgQuantifierVars.back();
+
+		// Add any type-checking conditions
+		std::vector<bg::Expr::Ref> bindingConditions;
+		std::vector<bg::Expr::Ref> bindingTCCs;
+		// First, we cannot handle OCs, issue warning
+		if (!convResult.conditions.getConditions(ExprConditionStore::ConditionType::OVERFLOW_CONDITION).empty())
+		{
+			convResult.conditions.removeConditions(ExprConditionStore::ConditionType::OVERFLOW_CONDITION);
+			m_context.reportWarning(&_node, "Annotation generates overflow checking conditions but they are not supported within quantifiers.");
+		}
+		for (auto expr: bindings)
+		{
+			auto varExpr = std::dynamic_pointer_cast<boogie::VarExpr const>(expr.id);
+			auto conditions = convResult.conditions.getConditionsContaining(ExprConditionStore::ConditionType::TYPE_CHECKING_CONDITION, varExpr->getName());
+			bindingConditions.insert(bindingConditions.end(), conditions.begin(), conditions.end());
+			auto tccs = convResult.conditions.getConditionsOn(ExprConditionStore::ConditionType::TYPE_CHECKING_CONDITION, varExpr->getName());
+			bindingTCCs.insert(bindingTCCs.end(), tccs.begin(), tccs.end());
+			convResult.conditions.removeConditions(ExprConditionStore::ConditionType::TYPE_CHECKING_CONDITION, varExpr->getName());
+		}
+
+		switch (type)
+		{
+		case bg::QuantExpr::Forall:
+			if (bindingConditions.size() || bindingTCCs.size())
+			{
+				auto conditions = bg::Expr::and_(bindingConditions);
+				auto tccs = bg::Expr::and_(bindingTCCs);
+				convResult.expr = bg::Expr::and_(conditions, convResult.expr);
+				convResult.expr = bg::Expr::impl(tccs, convResult.expr);
+			}
+			convResult.expr = bg::Expr::forall(bindings, convResult.expr);
+			break;
+		case bg::QuantExpr::Exists:
+			if (bindingConditions.size() || bindingTCCs.size())
+			{
+				auto conditions = bg::Expr::and_(bindingConditions);
+				auto tccs = bg::Expr::and_(bindingTCCs);
+				convResult.expr = bg::Expr::and_(conditions, convResult.expr);
+				convResult.expr = bg::Expr::and_(tccs, convResult.expr);
+			}
+			convResult.expr = bg::Expr::exists(bindings, convResult.expr);
+			break;
+		}
+
+		bgQuantifierType.pop_back();
+		bgQuantifierVars.pop_back();
+	}
+
+	result.expr = convResult.expr;
+	result.conditions = convResult.conditions;
+
+	// Report unsupported cases (side effects)
+	if (!convResult.newStatements.empty())
+		m_context.reportError(&_node, "Annotation expression introduces intermediate statements");
+	if (!convResult.newDecls.empty())
+		m_context.reportError(&_node, "Annotation expression introduces intermediate declarations");
+
 }
 
 bool ASTBoogieConverter::parseExpr(string exprStr, ASTNode const& _node, ASTNode const* _scope, BoogieContext::DocTagExpr& result)
