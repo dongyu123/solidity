@@ -839,7 +839,10 @@ void IRGeneratorForStatements::endVisit(FunctionCall const& _functionCall)
 			solAssert(functionType->declaration() == *functionDef, "");
 
 			if (identifier)
+			{
+				solAssert(*identifier->annotation().requiredLookup == VirtualLookup::Virtual, "");
 				functionDef = &functionDef->resolveVirtual(m_context.mostDerivedContract());
+			}
 			else
 			{
 				ContractType const* type = dynamic_cast<ContractType const*>(memberAccess->expression().annotation().type);
@@ -847,6 +850,7 @@ void IRGeneratorForStatements::endVisit(FunctionCall const& _functionCall)
 				{
 					ContractDefinition const* super = type->contractDefinition().superContract(m_context.mostDerivedContract());
 					solAssert(super, "Super contract not available.");
+					solAssert(*memberAccess->annotation().requiredLookup == VirtualLookup::Super, "");
 					functionDef = &functionDef->resolveVirtual(m_context.mostDerivedContract(), super);
 				}
 			}
@@ -925,6 +929,20 @@ void IRGeneratorForStatements::endVisit(FunctionCall const& _functionCall)
 						"(" <<
 						IRVariable(arg).commaSeparatedList() <<
 						")";
+				else if (auto functionType = dynamic_cast<FunctionType const*>(paramTypes[i]))
+				{
+					solAssert(
+						IRVariable(arg).type() == *functionType &&
+						functionType->kind() == FunctionType::Kind::External &&
+						!functionType->bound(),
+						""
+					);
+					define(indexedArgs.emplace_back(m_context.newYulVariable(), *TypeProvider::fixedBytes(32))) <<
+						m_utils.combineExternalFunctionIdFunction() <<
+						"(" <<
+						IRVariable(arg).commaSeparatedList() <<
+						")\n";
+				}
 				else
 					indexedArgs.emplace_back(convert(arg, *paramTypes[i]));
 			}
@@ -2086,6 +2104,7 @@ void IRGeneratorForStatements::endVisit(Identifier const& _identifier)
 	}
 	else if (FunctionDefinition const* functionDef = dynamic_cast<FunctionDefinition const*>(declaration))
 	{
+		solAssert(*_identifier.annotation().requiredLookup == VirtualLookup::Virtual, "");
 		FunctionDefinition const& resolvedFunctionDef = functionDef->resolveVirtual(m_context.mostDerivedContract());
 		define(_identifier) << to_string(resolvedFunctionDef.id()) << "\n";
 

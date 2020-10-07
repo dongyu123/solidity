@@ -1,3 +1,23 @@
+### 0.7.3 (unreleased)
+
+Important Bugfixes:
+ * Code Generator: Properly cleanup after copying dynamic-array to storage for packed types.
+
+Compiler Features:
+ * SMTChecker: Support ``addmod`` and ``mulmod``.
+ * SMTChecker: Support array slices.
+ * SMTChecker: Support type conversions.
+ * Optimizer: Optimize ``exp`` when base is -1.
+ * Code generator: Implemented events with function type as one of its indexed parameters.
+ * General: Option to stop compilation after parsing stage. Can be used with ``solc --stop-after parsing``
+
+
+Bugfixes:
+ * Type Checker: Fix internal compiler error when calling `.push(<arg>)` for a storage array with a nested mapping.
+ * Type Checker: Add missing checks for calls using types incompatible with ABIEncoderV1 in modules where ABIEncoderV2 is not enabled.
+ * Fixed internal compiler errors for certain contracts involving the ``new`` expression
+
+
 ### 0.7.2 (2020-09-28)
 
 Important Bugfixes:

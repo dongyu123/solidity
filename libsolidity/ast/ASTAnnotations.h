@@ -257,7 +257,8 @@ struct ExpressionAnnotation: ASTAnnotation
 	bool willBeWrittenTo = false;
 	/// Whether the expression is an lvalue that is only assigned.
 	/// Would be false for --, ++, delete, +=, -=, ....
-	SetOnce<bool> lValueOfOrdinaryAssignment;
+	/// Only relevant if isLvalue == true
+	bool lValueOfOrdinaryAssignment;
 
 	/// Types and - if given - names of arguments if the expr. is a function
 	/// that is called, used for overload resolution
@@ -268,6 +269,8 @@ struct IdentifierAnnotation: ExpressionAnnotation
 {
 	/// Referenced declaration, set at latest during overload resolution stage.
 	Declaration const* referencedDeclaration = nullptr;
+	/// What kind of lookup needs to be done (static, virtual, super) find the declaration.
+	SetOnce<VirtualLookup> requiredLookup;
 	/// List of possible declarations it could refer to (can contain duplicates).
 	std::vector<Declaration const*> candidateDeclarations;
 	/// List of possible declarations it could refer to.
@@ -278,6 +281,8 @@ struct MemberAccessAnnotation: ExpressionAnnotation
 {
 	/// Referenced declaration, set at latest during overload resolution stage.
 	Declaration const* referencedDeclaration = nullptr;
+	/// What kind of lookup needs to be done (static, virtual, super) find the declaration.
+	SetOnce<VirtualLookup> requiredLookup;
 };
 
 struct BinaryOperationAnnotation: ExpressionAnnotation

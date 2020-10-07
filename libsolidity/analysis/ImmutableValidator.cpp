@@ -125,7 +125,7 @@ bool ImmutableValidator::visit(WhileStatement const& _whileStatement)
 void ImmutableValidator::endVisit(Identifier const& _identifier)
 {
 	if (auto const callableDef = dynamic_cast<CallableDeclaration const*>(_identifier.annotation().referencedDeclaration))
-		visitCallableIfNew(callableDef->resolveVirtual(m_currentContract));
+		visitCallableIfNew(*_identifier.annotation().requiredLookup == VirtualLookup::Virtual ? callableDef->resolveVirtual(m_currentContract) : *callableDef);
 	if (auto const varDecl = dynamic_cast<VariableDeclaration const*>(_identifier.annotation().referencedDeclaration))
 		analyseVariableReference(*varDecl, _identifier);
 }
@@ -167,7 +167,7 @@ void ImmutableValidator::analyseVariableReference(VariableDeclaration const& _va
 
 	// If this is not an ordinary assignment, we write and read at the same time.
 	bool write = _expression.annotation().willBeWrittenTo;
-	bool read = !_expression.annotation().willBeWrittenTo || !*_expression.annotation().lValueOfOrdinaryAssignment;
+	bool read = !_expression.annotation().willBeWrittenTo || !_expression.annotation().lValueOfOrdinaryAssignment;
 	if (write)
 	{
 		if (!m_currentConstructor)

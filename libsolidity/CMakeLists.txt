@@ -106,6 +106,8 @@ set(sources
 	codegen/ir/IRLValue.h
 	codegen/ir/IRVariable.cpp
 	codegen/ir/IRVariable.h
+	formal/ArraySlicePredicate.cpp
+	formal/ArraySlicePredicate.h
 	formal/BMC.cpp
 	formal/BMC.h
 	formal/CHC.cpp
@@ -116,6 +118,8 @@ set(sources
 	formal/ModelChecker.h
 	formal/Predicate.cpp
 	formal/Predicate.h
+	formal/PredicateInstance.cpp
+	formal/PredicateInstance.h
 	formal/PredicateSort.cpp
 	formal/PredicateSort.h
 	formal/SMTEncoder.cpp

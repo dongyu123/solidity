@@ -258,9 +258,15 @@ public:
 	bool isVisibleAsLibraryMember() const { return visibility() >= Visibility::Internal; }
 	virtual bool isVisibleViaContractTypeAccess() const { return false; }
 
-
 	virtual bool isLValue() const { return false; }
 	virtual bool isPartOfExternalInterface() const { return false; }
+
+	/// @returns true if this is a declaration of an enum member.
+	bool isEnumValue() const;
+	/// @returns true if this is a declaration of a struct member.
+	bool isStructMember() const;
+	/// @returns true if this is a declaration of a parameter of an event.
+	bool isEventParameter() const;
 
 	/// @returns the type of expressions referencing this declaration.
 	/// This can only be called once types of variable declarations have already been resolved.
@@ -560,7 +566,10 @@ public:
 		ASTPointer<UserDefinedTypeName> _baseName,
 		std::unique_ptr<std::vector<ASTPointer<Expression>>> _arguments
 	):
-		ASTNode(_id, _location), m_baseName(std::move(_baseName)), m_arguments(std::move(_arguments)) {}
+		ASTNode(_id, _location), m_baseName(std::move(_baseName)), m_arguments(std::move(_arguments))
+	{
+		solAssert(m_baseName != nullptr, "Name cannot be null.");
+	}
 
 	void accept(ASTVisitor& _visitor) override;
 	void accept(ASTConstVisitor& _visitor) const override;
@@ -590,7 +599,10 @@ public:
 		ASTPointer<UserDefinedTypeName> _libraryName,
 		ASTPointer<TypeName> _typeName
 	):
-		ASTNode(_id, _location), m_libraryName(std::move(_libraryName)), m_typeName(std::move(_typeName)) {}
+		ASTNode(_id, _location), m_libraryName(std::move(_libraryName)), m_typeName(std::move(_typeName))
+	{
+		solAssert(m_libraryName != nullptr, "Name cannot be null.");
+	}
 
 	void accept(ASTVisitor& _visitor) override;
 	void accept(ASTConstVisitor& _visitor) const override;
@@ -899,7 +911,6 @@ public:
 		ASTPointer<Expression> _value,
 		Visibility _visibility,
 		ASTPointer<StructuredDocumentation> const _documentation = nullptr,
-		bool _isStateVar = false,
 		bool _isIndexed = false,
 		Mutability _mutability = Mutability::Mutable,
 		ASTPointer<OverrideSpecifier> _overrides = nullptr,
@@ -909,7 +920,6 @@ public:
 		StructurallyDocumented(std::move(_documentation)),
 		m_typeName(std::move(_type)),
 		m_value(std::move(_value)),
-		m_isStateVariable(_isStateVar),
 		m_isIndexed(_isIndexed),
 		m_mutability(_mutability),
 		m_overrides(std::move(_overrides)),
@@ -952,15 +962,11 @@ public:
 	bool isConstructorParameter() const;
 	/// @returns true iff this variable is a parameter(or return parameter of a library function
 	bool isLibraryFunctionParameter() const;
-	/// @returns true if the type of the variable does not need to be specified, i.e. it is declared
-	/// in the body of a function or modifier.
-	/// @returns true if this variable is a parameter of an event.
-	bool isEventParameter() const;
 	/// @returns true if the type of the variable is a reference or mapping type, i.e.
 	/// array, struct or mapping. These types can take a data location (and often require it).
 	/// Can only be called after reference resolution.
 	bool hasReferenceOrMappingType() const;
-	bool isStateVariable() const { return m_isStateVariable; }
+	bool isStateVariable() const;
 	bool isIndexed() const { return m_isIndexed; }
 	Mutability mutability() const { return m_mutability; }
 	bool isConstant() const { return m_mutability == Mutability::Constant; }
@@ -989,7 +995,6 @@ private:
 	/// Initially assigned value, can be missing. For local variables, this is stored inside
 	/// VariableDeclarationStatement and not here.
 	ASTPointer<Expression> m_value;
-	bool m_isStateVariable = false; ///< Whether or not this is a contract state variable
 	bool m_isIndexed = false; ///< Whether this is an indexed variable (used by events).
 	/// Whether the variable is "constant", "immutable" or non-marked (mutable).
 	Mutability m_mutability = Mutability::Mutable;
@@ -1053,7 +1058,10 @@ public:
 		ASTPointer<Identifier> _name,
 		std::unique_ptr<std::vector<ASTPointer<Expression>>> _arguments
 	):
-		ASTNode(_id, _location), m_modifierName(std::move(_name)), m_arguments(std::move(_arguments)) {}
+		ASTNode(_id, _location), m_modifierName(std::move(_name)), m_arguments(std::move(_arguments))
+	{
+		solAssert(m_modifierName != nullptr, "Name cannot be null.");
+	}
 
 	void accept(ASTVisitor& _visitor) override;
 	void accept(ASTConstVisitor& _visitor) const override;
@@ -1196,6 +1204,7 @@ class UserDefinedTypeName: public TypeName
 public:
 	UserDefinedTypeName(int64_t _id, SourceLocation const& _location, std::vector<ASTString> _namePath):
 		TypeName(_id, _location), m_namePath(std::move(_namePath)) {}
+
 	void accept(ASTVisitor& _visitor) override;
 	void accept(ASTConstVisitor& _visitor) const override;
 
