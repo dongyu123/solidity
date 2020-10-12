@@ -344,6 +344,8 @@ bool CompilerStack::analyze()
 			if (source->ast && !resolver.performImports(*source->ast, sourceUnitsByName))
 				return false;
 
+		resolver.warnHomonymDeclarations();
+
 		for (Source const* source: m_sourceOrder)
 			if (source->ast && !resolver.resolveNamesAndTypes(*source->ast))
 				return false;
@@ -388,6 +390,8 @@ bool CompilerStack::analyze()
 			for (Source const* source: m_sourceOrder)
 				if (source->ast && !postTypeChecker.check(*source->ast))
 					noErrors = false;
+			if (!postTypeChecker.finalize())
+				noErrors = false;
 		}
 
 		// Check that immutable variables are never read in c'tors and assigned
