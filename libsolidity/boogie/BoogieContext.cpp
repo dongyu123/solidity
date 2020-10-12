@@ -1477,14 +1477,14 @@ void BoogieContext::setCurrentContract(ContractDefinition const* contract)
 	if (contract)
 	{
 		m_globalContext.setCurrentContract(*contract);
-		m_scopes[nullptr]->registerDeclaration(*m_globalContext.currentSuper(), nullptr, false, true);
-		m_scopes[nullptr]->registerDeclaration(*m_globalContext.currentThis(), nullptr, false, true);
+		m_scopes[nullptr]->registerDeclaration(*m_globalContext.currentSuper(), false, true);
+		m_scopes[nullptr]->registerDeclaration(*m_globalContext.currentThis(), false, true);
 	}
 	else
 	{
 		// make "this" and "super" invisible.
-		m_scopes[nullptr]->registerDeclaration(*m_globalContext.currentThis(), nullptr, true, true);
-		m_scopes[nullptr]->registerDeclaration(*m_globalContext.currentSuper(), nullptr, true, true);
+		m_scopes[nullptr]->registerDeclaration(*m_globalContext.currentThis(), true, true);
+		m_scopes[nullptr]->registerDeclaration(*m_globalContext.currentSuper(), true, true);
 		m_globalContext.resetCurrentContract();
 	}
 	m_currentContract = contract;

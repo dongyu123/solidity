@@ -345,7 +345,7 @@ void ASTBoogieConverter::processSpecificationExpression(ASTPointer<Expression> e
 			if (typeResolver.resolveNamesAndTypes(*varsBlock))
 				for (auto varDecl: varsBlock->parameters())
 				{
-					scopeDecls->registerDeclaration(*varDecl);
+					scopeDecls->registerDeclaration(*varDecl, false, false);
 					// Manually set the scope and run the checker
 					varDecl->annotation().scope = expr.get();
 					checker.check(*varDecl);

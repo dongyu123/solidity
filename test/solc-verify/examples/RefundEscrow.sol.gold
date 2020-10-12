@@ -1,3 +1,4 @@
+test/solc-verify/examples/RefundEscrow.sol:202:18: Warning: This declaration shadows an existing declaration.
 solc-verify warning: Balance modifications due to gas consumption or miner rewards are not modeled
 Secondary::[constructor]: OK
 Secondary::primary: OK
