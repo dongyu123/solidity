@@ -1091,7 +1091,6 @@ workflows:
       # build-only
       - b_docs: *workflow_trigger_on_tags
       - b_ubu_cxx20: *workflow_trigger_on_tags
-      - b_ubu_ossfuzz: *workflow_trigger_on_tags
 
       # OS/X build and tests
       # - b_osx: *workflow_trigger_on_tags
