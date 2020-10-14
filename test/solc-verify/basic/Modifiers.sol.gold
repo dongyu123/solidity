@@ -1,3 +1,5 @@
+test/solc-verify/basic/Modifiers.sol:28:59: Warning: Unnamed return variable can remain unassigned. Add an explicit return with value to all non-reverting code paths or name the variable.
+test/solc-verify/basic/Modifiers.sol:33:72: Warning: Unnamed return variable can remain unassigned. Add an explicit return with value to all non-reverting code paths or name the variable.
 A::someFunc: OK
 A::someFunc2: OK
 A::twoModifiers: OK
