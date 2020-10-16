@@ -59,7 +59,7 @@ def verifyProcedure(arguments):
     timer.start()
     boogieArgs = '/proc:%s /nologo /doModSetAnalysis /errorTrace:0 /useArrayTheory /trace /infer:j' % procedureId
     if args.smt_log:
-        boogieArgs += ' /proverLog:%s' % args.smt_log
+        boogieArgs += ' /proverLog:%s.%s.smt2' % (args.smt_log, procedureId)
 
     # Solver path
     if args.solver_bin is not None:
