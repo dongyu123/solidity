@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0
 pragma solidity >=0.5.0;
 
 // Simple example that uses quantifiers in the specification. The contract invariants
@@ -11,7 +12,7 @@ contract QuantifiersSimple {
     int[] a;
 
     // OK
-    constructor() public {
+    constructor() {
         a.push(1);
     }
 
