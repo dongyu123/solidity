@@ -391,11 +391,13 @@ void SMTEncoder::endVisit(TupleExpression const& _tuple)
 	createExpr(_tuple);
 
 	if (_tuple.isInlineArray())
-		m_errorReporter.warning(
-			2177_error,
-			_tuple.location(),
-			"Assertion checker does not yet implement inline arrays."
-		);
+	{
+		// Add constraints for the length and values as it is known.
+		auto symbArray = dynamic_pointer_cast<smt::SymbolicArrayVariable>(m_context.expression(_tuple));
+		solAssert(symbArray, "");
+
+		addArrayLiteralAssertions(*symbArray, applyMap(_tuple.components(), [&](auto const& c) { return expr(*c); }));
+	}
 	else if (_tuple.components().size() == 1)
 		defineExpr(_tuple, expr(*_tuple.components().front()));
 	else
@@ -631,7 +633,9 @@ void SMTEncoder::endVisit(FunctionCall const& _funCall)
 	case FunctionType::Kind::ECRecover:
 	case FunctionType::Kind::SHA256:
 	case FunctionType::Kind::RIPEMD160:
+		break;
 	case FunctionType::Kind::BlockHash:
+		defineExpr(_funCall, m_context.state().blockhash(expr(*_funCall.arguments().at(0))));
 		break;
 	case FunctionType::Kind::AddMod:
 	case FunctionType::Kind::MulMod:
@@ -965,12 +969,10 @@ void SMTEncoder::endVisit(Literal const& _literal)
 		auto symbArray = dynamic_pointer_cast<smt::SymbolicArrayVariable>(m_context.expression(_literal));
 		solAssert(symbArray, "");
 
-		auto value = _literal.value();
-		m_context.addAssertion(symbArray->length() == value.length());
-		for (size_t i = 0; i < value.length(); i++)
-			m_context.addAssertion(
-				smtutil::Expression::select(symbArray->elements(), i) == size_t(value[i])
-			);
+		addArrayLiteralAssertions(
+			*symbArray,
+			applyMap(_literal.value(), [&](auto const& c) { return smtutil::Expression{size_t(c)}; })
+		);
 	}
 	else
 	{
@@ -982,6 +984,16 @@ void SMTEncoder::endVisit(Literal const& _literal)
 			")."
 		);
 	}
+}
+
+void SMTEncoder::addArrayLiteralAssertions(
+	smt::SymbolicArrayVariable& _symArray,
+	vector<smtutil::Expression> const& _elementValues
+)
+{
+	m_context.addAssertion(_symArray.length() == _elementValues.size());
+	for (size_t i = 0; i < _elementValues.size(); i++)
+		m_context.addAssertion(smtutil::Expression::select(_symArray.elements(), i) == _elementValues[i]);
 }
 
 void SMTEncoder::endVisit(Return const& _return)
@@ -1022,7 +1034,11 @@ bool SMTEncoder::visit(MemberAccess const& _memberAccess)
 	if (exprType->category() == Type::Category::Magic)
 	{
 		if (identifier)
-			defineGlobalVariable(identifier->name() + "." + _memberAccess.memberName(), _memberAccess);
+		{
+			auto const& name = identifier->name();
+			solAssert(name == "block" || name == "msg" || name == "tx", "");
+			defineExpr(_memberAccess, m_context.state().txMember(name + "." + _memberAccess.memberName()));
+		}
 		else if (auto magicType = dynamic_cast<MagicType const*>(exprType); magicType->kind() == MagicType::Kind::MetaType)
 		{
 			auto const& memberName = _memberAccess.memberName();
@@ -2162,6 +2178,7 @@ void SMTEncoder::clearIndices(ContractDefinition const* _contract, FunctionDefin
 		for (auto const& var: _function->localVariables())
 			m_context.variable(*var)->resetIndex();
 	}
+	m_context.state().reset();
 }
 
 Expression const* SMTEncoder::leftmostBase(IndexAccess const& _indexAccess)

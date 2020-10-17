@@ -1,21 +1,45 @@
-### 0.7.3 (unreleased)
+### 0.7.4 (unreleased)
+
+Language Features:
+ * Constants can be defined at file level.
+
+
+Compiler Features:
+ * SMTChecker: Support inline arrays.
+ * SMTChecker: Support variables ``block``, ``msg`` and ``tx`` in the CHC engine.
+ * Control Flow Graph: Print warning for non-empty functions with unnamed return parameters that are not assigned a value in all code paths.
+
+
+Bugfixes:
+ * Code generator: Fix internal error on returning structs containing mappings from library function.
+ * Code generator: Fix internal compiler error when referencing members via module name but not using the reference.
+ * Code generator: Fix ``ABIEncoderV2`` pragma from the current module affecting inherited functions and applied modifiers.
+ * Code generator: Use revert instead of invalid opcode for out-of-bounds array index access in getter.
+ * Type Checker: Fix internal compiler error caused by storage parameters with nested mappings in libraries.
+ * Name Resolver: Fix shadowing/same-name warnings for later declarations.
+ * Contract Level Checker: Add missing check against inheriting functions with ABIEncoderV2 return types in ABIEncoderV1 contracts.
+
+
+### 0.7.3 (2020-10-07)
 
 Important Bugfixes:
  * Code Generator: Properly cleanup after copying dynamic-array to storage for packed types.
 
+
 Compiler Features:
+ * Code generator: Implemented events with function type as one of its indexed parameters.
+ * General: Option to stop compilation after parsing stage. Can be used with ``solc --stop-after parsing``
+ * Optimizer: Optimize ``exp`` when base is ``-1``.
  * SMTChecker: Support ``addmod`` and ``mulmod``.
  * SMTChecker: Support array slices.
  * SMTChecker: Support type conversions.
- * Optimizer: Optimize ``exp`` when base is -1.
- * Code generator: Implemented events with function type as one of its indexed parameters.
- * General: Option to stop compilation after parsing stage. Can be used with ``solc --stop-after parsing``
 
 
 Bugfixes:
- * Type Checker: Fix internal compiler error when calling `.push(<arg>)` for a storage array with a nested mapping.
+ * Fixed internal compiler errors for certain contracts involving the ``new`` expression.
+ * JSON AST: Fix internal error when using ``--ast-json`` on a function with memory arguments in ABIEncoderV2 contracts.
  * Type Checker: Add missing checks for calls using types incompatible with ABIEncoderV1 in modules where ABIEncoderV2 is not enabled.
- * Fixed internal compiler errors for certain contracts involving the ``new`` expression
+ * Type Checker: Fix internal compiler error when calling `.push(<arg>)` for a storage array with a nested mapping.
 
 
 ### 0.7.2 (2020-09-28)
@@ -50,8 +74,8 @@ Bugfixes:
  * Code generator: Fix internal error on stripping dynamic types from return parameters on EVM versions without ``RETURNDATACOPY``.
  * Type Checker: Add missing check against nested dynamic arrays in ABI encoding functions when ABIEncoderV2 is disabled.
  * Type Checker: Correct the error message for invalid named parameter in a call to refer to the right argument.
- * Type Checker: Correct the warning for homonymous, but not shadowing declarations.
  * Type Checker: Disallow ``virtual`` for modifiers in libraries.
+ * Name Resolver: Correct the warning for homonymous, but not shadowing declarations.
  * Type system: Fix internal error on implicit conversion of contract instance to the type of its ``super``.
  * Type system: Fix internal error on implicit conversion of string literal to a calldata string.
  * Type system: Fix named parameters in overloaded function and event calls being matched incorrectly if the order differs from the declaration.

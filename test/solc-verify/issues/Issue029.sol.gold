@@ -1,4 +1,4 @@
-test/solc-verify/issues/Issue029.sol:6:9: Warning: This declaration shadows a builtin symbol.
+test/solc-verify/issues/Issue029.sol:6:9: Warning: This declaration shadows an existing declaration.
 test/solc-verify/issues/Issue029.sol:7:9: Warning: This declaration shadows a builtin symbol.
 test/solc-verify/issues/Issue029.sol:10:5: Warning: This declaration shadows a builtin symbol.
 test/solc-verify/issues/Issue029.sol:24:5: Warning: This declaration shadows a builtin symbol.

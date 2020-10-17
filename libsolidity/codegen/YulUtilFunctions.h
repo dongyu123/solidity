@@ -86,7 +86,6 @@ public:
 
 	/// @returns the name of a function that performs a left shift and subsequent cleanup
 	/// and, if needed, prior cleanup.
-	/// If the amount to shift by is signed, a check for negativeness is performed.
 	/// signature: (value, amountToShift) -> result
 	std::string typedShiftLeftFunction(Type const& _type, Type const& _amountType);
 	std::string typedShiftRightFunction(Type const& _type, Type const& _amountType);
@@ -128,6 +127,14 @@ public:
 	/// @returns the name of the exponentiation function.
 	/// signature: (base, exponent) -> power
 	std::string overflowCheckedIntExpFunction(IntegerType const& _type, IntegerType const& _exponentType);
+
+	/// @returns the name of the exponentiation function, specialized for literal base.
+	/// signature: exponent -> power
+	std::string overflowCheckedIntLiteralExpFunction(
+		RationalNumberType const& _baseType,
+		IntegerType const& _exponentType,
+		IntegerType const& _commonType
+	);
 
 	/// Generic unsigned checked exponentiation function.
 	/// Reverts if the result is larger than max.
@@ -174,6 +181,10 @@ public:
 	/// signature: (slot) ->
 	std::string clearStorageArrayFunction(ArrayType const& _type);
 
+	/// @returns the name of a function that will copy array from calldata or memory to storage
+	/// signature (to_slot, from_ptr) ->
+	std::string copyArrayToStorage(ArrayType const& _fromType, ArrayType const& _toType);
+
 	/// Returns the name of a function that will convert a given length to the
 	/// size in memory (number of storage slots or calldata/memory bytes) it
 	/// will require.
@@ -219,6 +230,10 @@ public:
 	/// @returns the name of a function that advances an array data pointer to the next element.
 	/// Only works for memory arrays, calldata arrays and storage arrays that every item occupies one or multiple full slots.
 	std::string nextArrayElementFunction(ArrayType const& _type);
+
+	/// @returns the name of a function that allocates a memory array and copies the contents
+	/// of the storage array into it.
+	std::string copyArrayFromStorageToMemoryFunction(ArrayType const& _from, ArrayType const& _to);
 
 	/// @returns the name of a function that performs index access for mappings.
 	/// @param _mappingType the type of the mapping
@@ -343,7 +358,7 @@ public:
 	/// otherwise an assertion failure.
 	///
 	/// This is used for data decoded from external sources.
-	std::string validatorFunction(Type const& _type, bool _revertOnFailure = false);
+	std::string validatorFunction(Type const& _type, bool _revertOnFailure);
 
 	std::string packedHashFunction(std::vector<Type const*> const& _givenTypes, std::vector<Type const*> const& _targetTypes);
 
@@ -426,6 +441,10 @@ private:
 	/// starting with given offset until the end of the slot
 	/// signature: (slot, offset)
 	std::string partialClearStorageSlotFunction();
+
+	/// @returns the name of a function that will clear the given storage struct
+	/// signature: (slot) ->
+	std::string clearStorageStructFunction(StructType const& _type);
 
 	langutil::EVMVersion m_evmVersion;
 	RevertStrings m_revertStrings;

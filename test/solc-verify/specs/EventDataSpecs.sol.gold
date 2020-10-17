@@ -1,3 +1,4 @@
+test/solc-verify/specs/EventDataSpecs.sol:89:10: Warning: This declaration shadows an existing declaration.
 C::test_new_entry: OK
 C::test_updated_entry: ERROR
  - test/solc-verify/specs/EventDataSpecs.sol:23:3: Function can end without triggering event

@@ -389,14 +389,12 @@ void BMC::endVisit(FunctionCall const& _funCall)
 	case FunctionType::Kind::ECRecover:
 	case FunctionType::Kind::SHA256:
 	case FunctionType::Kind::RIPEMD160:
-	case FunctionType::Kind::BlockHash:
 		SMTEncoder::endVisit(_funCall);
 		abstractFunctionCall(_funCall);
 		break;
 	case FunctionType::Kind::Send:
 	case FunctionType::Kind::Transfer:
 	{
-		SMTEncoder::endVisit(_funCall);
 		auto value = _funCall.arguments().front();
 		solAssert(value, "");
 		smtutil::Expression thisBalance = m_context.state().balance();
@@ -406,8 +404,11 @@ void BMC::endVisit(FunctionCall const& _funCall)
 			thisBalance < expr(*value),
 			&_funCall
 		);
+
+		SMTEncoder::endVisit(_funCall);
 		break;
 	}
+	case FunctionType::Kind::BlockHash:
 	case FunctionType::Kind::AddMod:
 	case FunctionType::Kind::MulMod:
 		[[fallthrough]];
