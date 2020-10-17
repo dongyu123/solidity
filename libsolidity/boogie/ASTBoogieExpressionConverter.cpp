@@ -622,6 +622,27 @@ bool ASTBoogieExpressionConverter::visit(FunctionCall const& _node)
 			}
 		}
 		m_currentExpr = expr;
+
+		// Check for reference type conversion (e.g., string storage to string memory)
+		if (auto nodeRefType = dynamic_cast<ReferenceType const*>(_node.annotation().type))
+		{
+			auto getterVarRefType = dynamic_cast<ReferenceType const*>(getterVarType);
+			solAssert(getterVarRefType, "Expected reference type for getter");
+			if (nodeRefType->location() != getterVarRefType->location())
+			{
+				auto tmpVar = m_context.freshTempVar(m_context.toBoogieType(nodeRefType, &_node));
+				m_newDecls.push_back(tmpVar);
+				auto ar = AssignHelper::makeAssign(
+						AssignHelper::AssignParam{tmpVar->getRefTo(), nodeRefType, nullptr},
+						AssignHelper::AssignParam{m_currentExpr, getterVarRefType, &_node},
+						Token::Assign, &_node, m_context);
+				m_newDecls.insert(m_newDecls.end(), ar.newDecls.begin(), ar.newDecls.end());
+				for (auto stmt: ar.newStmts)
+					addSideEffect(stmt);
+				m_currentExpr = tmpVar->getRefTo();
+			}
+		}
+
 		return false; // Result is already in the current expr
 	}
 
