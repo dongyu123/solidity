@@ -70,8 +70,18 @@ void AssignHelper::makeAssignInternal(AssignParam lhs, AssignParam rhs, langutil
 	{
 		if (dynamic_cast<MappingType const*>(rhs.type))
 		{
-			auto packed = StoragePtrHelper::packToLocalPtr(rhs.expr, rhs.bgExpr, context);
-			rhs.bgExpr = packed;
+			// No need to packif the RHS is already a pointer.
+			// Seems like there is no method to check if a mapping type is a pointer,
+			// so as a best effort we check if the RHS is a local variable.
+			bool packRequired = true;
+			if (auto rhsIdExpr = dynamic_cast<Identifier const*>(rhs.expr))
+				if (auto varDecl = dynamic_cast<VariableDeclaration const*>(rhsIdExpr->annotation().referencedDeclaration))
+					if (varDecl->isLocalVariable()) packRequired = false;
+			if (packRequired)
+			{
+				auto packed = StoragePtrHelper::packToLocalPtr(rhs.expr, rhs.bgExpr, context);
+				rhs.bgExpr = packed;
+			}
 			makeBasicAssign(lhs, rhs, Token::Assign, assocNode, context, result);
 		}
 		else
