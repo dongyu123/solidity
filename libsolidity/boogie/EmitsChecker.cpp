@@ -171,6 +171,8 @@ bool EmitsChecker::visit(EmitStatement const& _node)
 	EventDefinition const* eventDef = nullptr;
 	if (auto id = dynamic_cast<Identifier const*>(&_node.eventCall().expression()))
 		eventDef = dynamic_cast<EventDefinition const*>(id->annotation().referencedDeclaration);
+	if (auto memAcc = dynamic_cast<MemberAccess const*>(&_node.eventCall().expression()))
+		eventDef = dynamic_cast<EventDefinition const*>(memAcc->annotation().referencedDeclaration);
 
 	if (!eventDef)
 	{
