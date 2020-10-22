@@ -78,7 +78,7 @@ def verifyProcedure(arguments):
     if args.solver == 'cvc4':
         boogieArgs += ' /proverOpt:PROVER_PATH=%s /proverOpt:SOLVER=CVC4 /proverOpt:C:"--incremental --produce-models --quiet"' % solverPath
         if args.arithmetic == 'mod' or args.arithmetic == 'mod-overflow':
-            boogieArgs += ' /proverOpt:C:"--arrays-eager-lemmas"'
+            boogieArgs += ' /proverOpt:C:"--decision=justification --no-arrays-eager-index --arrays-eager-lemmas"'
             boogieArgs += ' /proverOpt:LOGIC=QF_AUFDTNIA'
 
     verifyCommand = args.boogie + ' ' + bplFile + ' ' + boogieArgs

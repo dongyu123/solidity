@@ -1,1 +1,1 @@
---solver cvc4 --arithmetic mod-overflow
+--solver z3 --arithmetic mod-overflow
