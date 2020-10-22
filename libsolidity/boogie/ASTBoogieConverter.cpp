@@ -1361,14 +1361,14 @@ bool ASTBoogieConverter::visit(VariableDeclaration const& _node)
 {
 	rememberScope(_node);
 
+	// Constants are inlined
+	if (_node.isConstant())
+		return false;
+
 	// Non-state variables should be handled in the VariableDeclarationStatement
 	solAssert(_node.isStateVariable(), "Non-state variable appearing in VariableDeclaration");
 
 	// Initializers are collected by the visitor for ContractDefinition
-
-	// Constants are inlined
-	if (_node.isConstant())
-		return false;
 
 	m_context.addGlobalComment("\nState variable: " + _node.name() + ": " + _node.type()->toString());
 	// State variables are represented as maps from address to their type
