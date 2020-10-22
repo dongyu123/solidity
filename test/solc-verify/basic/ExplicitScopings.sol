@@ -12,7 +12,7 @@ contract A {
 }
 
 contract B is A {
-    function g(int x) public pure override returns (int) {
+    function g(int x) public pure override returns (int y) {
         int z = A.g(x); // Explicit scoping with base name
         assert(z == x + 1);
         return z;
