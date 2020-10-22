@@ -50,7 +50,7 @@ using namespace solidity::frontend;
 
 pair<string, string> IRGenerator::run(
 	ContractDefinition const& _contract,
-	map<ContractDefinition const*, string const> const& _otherYulSources
+	map<ContractDefinition const*, string_view const> const& _otherYulSources
 )
 {
 	string const ir = yul::reindent(generate(_contract, _otherYulSources));
@@ -78,7 +78,7 @@ pair<string, string> IRGenerator::run(
 
 string IRGenerator::generate(
 	ContractDefinition const& _contract,
-	map<ContractDefinition const*, string const> const& _otherYulSources
+	map<ContractDefinition const*, string_view const> const& _otherYulSources
 )
 {
 	auto subObjectSources = [&_otherYulSources](std::set<ContractDefinition const*, ASTNode::CompareByID> const& subObjects) -> string
@@ -668,6 +668,9 @@ string IRGenerator::dispatchRoutine(ContractDefinition const& _contract)
 
 string IRGenerator::memoryInit(bool _useMemoryGuard)
 {
+	// TODO: Remove once we have made sure it is safe, i.e. after "Yul memory objects lite".
+	//       Also restore the tests removed in the commit that adds this comment.
+	_useMemoryGuard = false;
 	// This function should be called at the beginning of the EVM call frame
 	// and thus can assume all memory to be zero, including the contents of
 	// the "zero memory area" (the position CompilerUtils::zeroPointer points to).

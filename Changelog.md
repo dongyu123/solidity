@@ -1,23 +1,43 @@
-### 0.7.4 (unreleased)
+### 0.7.5 (unreleased)
+
+Compiler Features:
+ * SMTChecker: Add division by zero checks in the CHC engine.
+
+Bugfixes:
+ * SMTChecker: Fix lack of reporting potential violations when using only the CHC engine.
+ * SMTChecker: Fix internal error on conversion from string literal to byte.
+ * Code generator: Fix missing creation dependency tracking for abstract contracts.
+
+
+### 0.7.4 (2020-10-19)
+
+Important Bugfixes:
+ * Code Generator: Fix data corruption bug when copying empty byte arrays from memory or calldata to storage.
+
 
 Language Features:
  * Constants can be defined at file level.
 
 
 Compiler Features:
+ * Command Line Interface: New option ``--model-checker-engine`` allows to choose a specific SMTChecker engine. Options are ``all`` (default), ``bmc``, ``chc`` and ``none``.
+ * Control Flow Graph: Print warning for non-empty functions with unnamed return parameters that are not assigned a value in all code paths.
+ * SMTChecker: Support ``keccak256``, ``sha256``, ``ripemd160`` and ``ecrecover`` in the CHC engine.
  * SMTChecker: Support inline arrays.
  * SMTChecker: Support variables ``block``, ``msg`` and ``tx`` in the CHC engine.
- * Control Flow Graph: Print warning for non-empty functions with unnamed return parameters that are not assigned a value in all code paths.
+ * Standard JSON: New option ``modelCheckerSettings.engine`` allows to choose a specific SMTChecker engine. Options are ``all`` (default), ``bmc``, ``chc`` and ``none``.
 
 
 Bugfixes:
- * Code generator: Fix internal error on returning structs containing mappings from library function.
- * Code generator: Fix internal compiler error when referencing members via module name but not using the reference.
  * Code generator: Fix ``ABIEncoderV2`` pragma from the current module affecting inherited functions and applied modifiers.
+ * Code generator: Fix internal compiler error when referencing members via module name but not using the reference.
+ * Code generator: Fix internal error on returning structs containing mappings from library function.
  * Code generator: Use revert instead of invalid opcode for out-of-bounds array index access in getter.
- * Type Checker: Fix internal compiler error caused by storage parameters with nested mappings in libraries.
- * Name Resolver: Fix shadowing/same-name warnings for later declarations.
  * Contract Level Checker: Add missing check against inheriting functions with ABIEncoderV2 return types in ABIEncoderV1 contracts.
+ * Name Resolver: Fix shadowing/same-name warnings for later declarations.
+ * Type Checker: Allow arrays of contract types as type expressions and as arguments for ``abi.decode``.
+ * Type Checker: Disallow invalid use of library names as type name.
+ * Type Checker: Fix internal compiler error caused by storage parameters with nested mappings in libraries.
 
 
 ### 0.7.3 (2020-10-07)
