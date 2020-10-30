@@ -35,6 +35,7 @@ def findSolver(solver):
         solverPath = os.path.join(path, solverExe)
         if os.path.isfile(solverPath) and os.access(solverPath, os.X_OK):
             return solverPath
+    return None
 
 def yellowTxt(txt):
     return '\033[93m' + txt + '\x1b[0m' if sys.stdout.isatty() else txt
@@ -47,6 +48,77 @@ def redTxt(txt):
 
 def blueTxt(txt):
     return '\033[94m' + txt + '\x1b[0m' if sys.stdout.isatty() else txt
+
+def parseBoogieOutput(bplFile, verifierOutputStr):
+    '''Takes boogie output and returns structured result'''
+
+    # List of issues
+    issues = []
+    # Name of the verified function
+    functionName = None
+    # Final result
+    result = 'OK'
+
+    # Map results back to .sol file
+    outputLines = list(filter(None, verifierOutputStr.split('\n')))
+    errors = 0
+    inconclusive = 0
+    for outputLine, nextOutputLine in zip(outputLines, outputLines[1:]):
+        if 'This assertion might not hold.' in outputLine:
+            errLine = getRelatedLineFromBpl(outputLine, 0) # Info is in the current line
+            issues.append({
+                'location': getSourceLineAndCol(errLine),
+                'message': getMessage(errLine)
+            })
+        if 'A postcondition might not hold on this return path.' in outputLine:
+            errLine = getRelatedLineFromBpl(nextOutputLine, 0) # Info is in the next line
+            issues.append({
+                'location': getSourceLineAndCol(errLine),
+                'message': getMessage(errLine)
+            })
+        if 'A precondition for this call might not hold.' in outputLine:
+            errLine = getRelatedLineFromBpl(nextOutputLine, 0) # Message is in the next line
+            errLinePrev = getRelatedLineFromBpl(outputLine, -1) # Location is in the line before
+            issues.append({
+                'location': getSourceLineAndCol(errLinePrev),
+                'message': getMessage(errLine)
+            })
+        if 'Verification inconclusive' in outputLine:
+            errLine = getRelatedLineFromBpl(outputLine, 0) # Info is in the current line
+            issues.append({
+                'location': getSourceLineAndCol(errLine),
+                'message': 'Inconclusive result'
+            })
+        if 'This loop invariant might not hold on entry.' in outputLine:
+            errLine = getRelatedLineFromBpl(outputLine, 0) # Info is in the current line
+            issues.append({
+                'location': getSourceLineAndCol(errLine),
+                'message': 'Invariant \'' + getMessage(errLine) + '\' might not hold on loop entry'
+            })
+        if 'This loop invariant might not be maintained by the loop.' in outputLine:
+            errLine = getRelatedLineFromBpl(outputLine, 0) # Info is in the current line
+            issues.append({
+                'location': getSourceLineAndCol(errLine),
+                'message': 'Invariant \'' + getMessage(errLine) + '\' might not be maintained by the loop'
+            })
+        if re.search('Verifying .* \.\.\.', outputLine) is not None:
+            if 'error' in nextOutputLine:
+                result = 'ERROR'
+            elif 'timeout' in nextOutputLine:
+                result = 'TIMEOUT'
+            elif 'inconclusive' in nextOutputLine:
+                result = 'INCONCLUSIVE'
+            else:
+                result = 'OK'
+            functionName = getFunctionName(outputLine.replace('Verifying ', '').replace(' ...',''), bplFile)
+
+    result = {
+        'function': functionName,
+        'issues': issues,
+        'result': result
+    }
+
+    return result
 
 def verifyProcedure(arguments):
     # Unpack arguments
@@ -104,13 +176,18 @@ def verifyProcedure(arguments):
     if re.search('Boogie program verifier finished with', verifierOutputStr) == None:
         print(yellowTxt('Error while running verifier, details:'))
         printVerbose(verifierOutputStr)
-        return (ERROR_BOOGIE_ERROR, "")
+        return (ERROR_BOOGIE_ERROR, None)
     elif args.verbose:
         print(blueTxt('----- Verifier output -----'))
         printVerbose(verifierOutputStr)
         print(blueTxt('---------------------------'))
 
-    return (ERROR_NO_ERROR, verifierOutputStr)
+    # Return structure boogie output
+    result = parseBoogieOutput(bplFile, verifierOutputStr)
+    if args.verbose:
+        print(result)
+
+    return (ERROR_NO_ERROR, result)
 
 def verifyAll(bplFile, args):
     verifyProcedureArgs = []
@@ -131,13 +208,22 @@ def verifyAll(bplFile, args):
        verifierOutputList = p.map(verifyProcedure, verifyProcedureArgs)
 
     # Join results
-    verifierOutputStr = ""
-    for (resultCode, resultOutput) in verifierOutputList:
-        verifierOutputStr += resultOutput
+    results = {}
+    for (code, result) in verifierOutputList:
+        functionName = result['function']
+        if functionName is not None:
+            if functionName in results:
+                # We need to pick one
+                assert false
+            results[functionName] = {
+                'result': result['result'],
+                'issues': result['issues']
+            }
 
-    return verifierOutputStr
+    return results
 
 def main(tmpDir):
+
     # Set up argument parser
     parser = argparse.ArgumentParser(description='Verify Solidity smart contracts.', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('file', type=str, help='Path to the input file')
@@ -154,8 +240,8 @@ def main(tmpDir):
     parser.add_argument('--show-warnings', action='store_true', help='Display warnings')
 
     parser.add_argument('--solc', type=str, help='Solidity compiler to use (with boogie translator)', default=os.path.dirname(os.path.realpath(__file__)) + '/solc')
-    parser.add_argument('--boogie', type=str, help='Boogie verifier binary to use', default='@BOOGIE_EXE@')
-    parser.add_argument('--solver', type=str, help='SMT solver used by the verifier', default=@BOOGIE_DEFAULT_SOLVER@, choices=['z3', 'cvc4'])
+    parser.add_argument('--boogie', type=str, help='Boogie verifier binary to use', default='boogie')
+    parser.add_argument('--solver', type=str, help='SMT solver used by the verifier', default='z3', choices=['z3', 'cvc4'])
     parser.add_argument('--solver-bin', type=str, help='Binary of the solver to use')
 
     args = parser.parse_args()
@@ -213,59 +299,46 @@ def main(tmpDir):
                 line = line.replace('solc-verify error: ', redTxt('solc-verify error') + ': ')
                 print(line)
 
-    # Run verification
-    verifierOutputStr = verifyAll(bplFile, args)
-
     # Map results back to .sol file
-    prefix = '' if args.errors_only else ' - '
-    outputLines = list(filter(None, verifierOutputStr.split('\n')))
+    skipped = 0
     errors = 0
     inconclusive = 0
-    for outputLine, nextOutputLine in zip(outputLines, outputLines[1:]):
-        if 'This assertion might not hold.' in outputLine:
-            errLine = getRelatedLineFromBpl(outputLine, 0) # Info is in the current line
-            print(prefix + getSourceLineAndCol(errLine) + ': ' + getMessage(errLine))
-            errors = errors + 1
-        if 'A postcondition might not hold on this return path.' in outputLine:
-            errLine = getRelatedLineFromBpl(nextOutputLine, 0) # Info is in the next line
-            print(prefix + getSourceLineAndCol(errLine) + ': ' + getMessage(errLine))
-            errors = errors + 1
-        if 'A precondition for this call might not hold.' in outputLine:
-            errLine = getRelatedLineFromBpl(nextOutputLine, 0) # Message is in the next line
-            errLinePrev = getRelatedLineFromBpl(outputLine, -1) # Location is in the line before
-            print(prefix + getSourceLineAndCol(errLinePrev) + ': ' + getMessage(errLine))
-            errors = errors + 1
-        if 'Verification inconclusive' in outputLine:
-            errLine = getRelatedLineFromBpl(outputLine, 0) # Info is in the current line
-            print(prefix + getSourceLineAndCol(errLine) + ': Inconclusive result for function \'' + getMessage(errLine) + '\'')
-            errors = errors + 1
-        if 'This loop invariant might not hold on entry.' in outputLine:
-            errLine = getRelatedLineFromBpl(outputLine, 0) # Info is in the current line
-            print(prefix + getSourceLineAndCol(errLine) + ': Invariant \'' + getMessage(errLine) + '\' might not hold on loop entry')
-            errors = errors + 1
-        if 'This loop invariant might not be maintained by the loop.' in outputLine:
-            errLine = getRelatedLineFromBpl(outputLine, 0) # Info is in the current line
-            print(prefix + getSourceLineAndCol(errLine) + ': Invariant \'' + getMessage(errLine) + '\' might not be maintained by the loop')
-            errors = errors + 1
-        if not args.errors_only and re.search('Verifying .* \.\.\.', outputLine) is not None:
-            if 'error' in nextOutputLine:
-                result = redTxt('ERROR')
-                errors = errors + 1
-            elif 'timeout' in nextOutputLine:
-                result = yellowTxt('TIMEOUT')
-                inconclusive = inconclusive + 1
-            elif 'inconclusive' in nextOutputLine:
-                result = yellowTxt('INCONCLUSIVE')
-                inconclusive = inconclusive + 1
-            else:
-                result = greenTxt('OK')
-            print(getFunctionName(outputLine.replace('Verifying ', '').replace(' ...',''), bplFile) + ': ' + result)
 
-    skipped = 0
+    # Run verification
+    verifierResults = verifyAll(bplFile, args)
+
+    # Collect all the skipped functions
     for line in open(bplFile).readlines():
         if line.startswith('procedure ') and '{:skipped}' in line:
-            print(getMessage(line) + ': ' + yellowTxt('SKIPPED'))
-            skipped += 1
+            verifierResults[getMessage(line)] = {
+                'result': 'SKIPPED',
+                'message': 'SKIPPED'
+            }
+
+    prefix = '' if args.errors_only else ' - '
+    for function, result in verifierResults.items():
+        result_type = result['result']
+        # Check result type
+        if result_type == 'ERROR':
+            errors = errors + 1
+            color = redTxt
+        elif result_type == 'INCONCLUSIVE':
+            inconclusive = inconclusive + 1
+            color = yellowTxt
+        elif result_type == 'TIMEOUT':
+            inconclusive = inconclusive + 1
+            color = yellowTxt
+        elif result_type == 'SKIPPED':
+            skipped = skipped + 1
+            color = yellowTxt
+        elif result_type == 'OK':
+            color = greenTxt
+        print(function + ': ' + color(result_type))
+        if 'issues' in result:
+            for issue in result['issues']:
+                location = issue['location']
+                locationStr = '%s:%s:%s' % (location['file'], location['row'], location['column'])
+                print(prefix + locationStr + ': ' + issue['message'])
 
     # Warnings
     if warnings > 0 and not args.show_warnings:
@@ -305,9 +378,13 @@ def getRelatedLineFromBpl(outputLine, offset):
 def getSourceLineAndCol(line):
     match = re.search('{:sourceloc \"([^}]*)\", (\\d+), (\\d+)}', line)
     if match is None:
-        return '[Could not trace back error location]'
+        return None
     else:
-        return  '%s:%s:%s' % (match.group(1), match.group(2), match.group(3))
+        return {
+            'file': match.group(1),
+            'row': match.group(2),
+            'column': match.group(3)
+        }
 
 # Gets the message from an annotated line in the .bpl
 def getMessage(line):
