@@ -1077,13 +1077,6 @@ jobs:
       MAKEFLAGS: -j 3
     steps:
       - checkout
-      - run: *setup_sverif_cvc4
-      - run: *setup_sverif_boogie
-      - run:
-          name: Install build dependencies
-          command: |
-            # TODO: try to set cmake options in the environment variable
-            echo 'export PATH="$PATH:$HOME/.dotnet/tools"' >> $BASH_ENV
       - run: *setup_prerelease_commit_hash
       - run: *run_build
       - store_artifacts: *artifacts_solc
