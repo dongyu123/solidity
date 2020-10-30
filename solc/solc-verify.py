@@ -16,9 +16,10 @@ ERROR_NO_ERROR=0
 ERROR_COMPILER=-1
 ERROR_SOLVER_NOT_FOUND=-2
 ERROR_PROCESS_ERROR=-3
-ERROR_BOOGIE_ERROR=-4
-ERROR_VERIFICATION=-5
-ERROR_PARTIAL=-6
+ERROR_PROCESS_TIMEOUT = -4
+ERROR_BOOGIE_ERROR=-5
+ERROR_VERIFICATION=-6
+ERROR_PARTIAL=-7
 
 def kill():
     parent = psutil.Process(os.getpid())
@@ -48,6 +49,17 @@ def redTxt(txt):
 
 def blueTxt(txt):
     return '\033[94m' + txt + '\x1b[0m' if sys.stdout.isatty() else txt
+
+# Mapping from status to colors
+statusToColor = {
+    'OK': greenTxt,
+    'INCONCLUSIVE': yellowTxt,
+    'TIMEOUT': yellowTxt,
+    'SKIPPED': yellowTxt,
+    'ERROR': redTxt,
+    'UNKNOWN_PROCESS_ERROR': redTxt,
+    'UNKNOWN_BOOGIE_ERROR': redTxt,
+}
 
 def parseBoogieOutput(bplFile, verifierOutputStr):
     '''Takes boogie output and returns structured result'''
@@ -160,23 +172,36 @@ def verifyProcedure(arguments):
         verifierOutput = subprocess.check_output(verifyCommand, shell = True, stderr=subprocess.STDOUT)
         timer.cancel()
     except subprocess.CalledProcessError as err:
-        errorType = "error"
+        timer.cancel()
+        functionName = getFunctionName(procedureId, bplFile)
+        # Timeout is expected
         if err.returncode == -9:
-            errorType = "timeout"
-        else:
+            return (ERROR_NO_ERROR, {
+                'function': functionName,
+                'result': 'TIMEOUT',
+                'issues': []
+            })
+        # Other errors should be reported
+        if args.verbose:
             print(yellowTxt('Error while running verifier, details:'))
-        if err.returncode != -9 or args.verbose:
             print(blueTxt('----- Verifier output -----'))
             printVerbose(err.output.decode('utf-8'))
             print(blueTxt('---------------------------'))
-        timer.cancel()
-        return (ERROR_PROCESS_ERROR, 'Verifying %s ...\n%s\n' % (procedureId, errorType))
+        return (ERROR_PROCESS_ERROR, {
+            'function': functionName,
+            'result': 'UNKNOWN_PROCESS_ERROR',
+            'issues': []
+        })
 
     verifierOutputStr = verifierOutput.decode('utf-8')
     if re.search('Boogie program verifier finished with', verifierOutputStr) == None:
         print(yellowTxt('Error while running verifier, details:'))
         printVerbose(verifierOutputStr)
-        return (ERROR_BOOGIE_ERROR, None)
+        return (ERROR_BOOGIE_ERROR, {
+            'function': functionName,
+            'result': 'UNKNOWN_BOOGIE_ERROR',
+            'issues': []
+        })
     elif args.verbose:
         print(blueTxt('----- Verifier output -----'))
         printVerbose(verifierOutputStr)
@@ -318,19 +343,16 @@ def main(tmpDir):
     prefix = '' if args.errors_only else ' - '
     for function, result in verifierResults.items():
         result_type = result['result']
+        color = statusToColor[result_type]
         # Check result type
         if result_type == 'ERROR':
             errors = errors + 1
-            color = redTxt
         elif result_type == 'INCONCLUSIVE':
             inconclusive = inconclusive + 1
-            color = yellowTxt
         elif result_type == 'TIMEOUT':
             inconclusive = inconclusive + 1
-            color = yellowTxt
         elif result_type == 'SKIPPED':
             skipped = skipped + 1
-            color = yellowTxt
         elif result_type == 'OK':
             color = greenTxt
         print(function + ': ' + color(result_type))
