@@ -59,6 +59,13 @@ defaults:
         curl --silent "https://api.github.com/repos/CVC4/CVC4/releases/latest" | grep browser_download_url | grep -E 'linux' | cut -d '"' -f 4 | wget -qi - -O /usr/local/bin/cvc4
         chmod a+x /usr/local/bin/cvc4
 
+  - setup_sverif_z3: &setup_sverif_z3
+      name: Install Z3
+      command: |
+        curl --silent "https://api.github.com/repos/Z3Prover/z3/releases/latest" | grep browser_download_url | grep -E 'ubuntu' | cut -d '"' -f 4 | wget -qi - -O z3.zip
+        unzip -p z3.zip '*bin/z3' > /usr/local/bin/z3
+        chmod a+x /usr/local/bin/z3
+
   - setup_sverif_boogie: &setup_sverif_boogie
       name: Install Boogie
       command: |
@@ -69,8 +76,10 @@ defaults:
         apt install -y apt-transport-https
         apt update
         apt install -y dotnet-sdk-3.1
-        # Boogie
+        # boogie
         dotnet tool install --global boogie
+        # add to path
+        echo 'export PATH="$PATH:$HOME/.dotnet/tools"' >> $BASH_ENV
 
   # --------------------------------------------------------------------------
   # Artifacts Templates
@@ -1092,6 +1101,7 @@ jobs:
       - attach_workspace:
           at: build
       - run: *setup_sverif_cvc4
+      - run: *setup_sverif_z3
       - run: *setup_sverif_boogie
       - run:
           name: Install dependencies
@@ -1113,6 +1123,7 @@ jobs:
       - attach_workspace:
           at: build
       - run: *setup_sverif_cvc4
+      - run: *setup_sverif_z3
       - run: *setup_sverif_boogie
       - run:
           name: Install dependencies
