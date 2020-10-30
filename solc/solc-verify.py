@@ -61,6 +61,21 @@ statusToColor = {
     'UNKNOWN_BOOGIE_ERROR': redTxt,
 }
 
+def betterResult(status1, status2):
+    if status1 == 'OK':
+        return True
+    if status1 == 'ERROR':
+        return True
+    if status2 == 'OK':
+        return False
+    if statis2 == 'ERROR':
+        return False
+    if status1 == 'INCONCLUSIVE':
+        return True
+    if status2 == 'INCONCLUSIVE':
+        return False
+    return True
+
 def parseBoogieOutput(bplFile, verifierOutputStr):
     '''Takes boogie output and returns structured result'''
 
@@ -137,29 +152,30 @@ def verifyProcedure(arguments):
     bplFile = arguments['bplFile']
     procedureId = arguments['procedureId']
     args = arguments['args']
+    solver = arguments['solver']
     # Run timer
     timer = threading.Timer(args.timeout, kill)
     # Run verification, get result
     timer.start()
     boogieArgs = '/proc:%s /nologo /doModSetAnalysis /errorTrace:0 /useArrayTheory /trace /infer:j' % procedureId
     if args.smt_log:
-        boogieArgs += ' /proverLog:%s.%s.smt2' % (args.smt_log, procedureId)
+        boogieArgs += ' /proverLog:%s.%s.%s.smt2' % (args.smt_log, procedureId, solver)
 
     # Solver path
     if args.solver_bin is not None:
         solverPath = args.solver_bin
     else:
-        solverPath = findSolver(args.solver)
+        solverPath = findSolver(solver)
     if solverPath is None:
-        print(yellowTxt('Error: cannot find %s' % args.solver))
+        print(yellowTxt('Error: cannot find %s' % solver))
         return ERROR_SOLVER_NOT_FOUND
     if args.verbose:
-       print('Using %s at %s' % (args.solver, solverPath))
+       print('Using %s at %s' % (solver, solverPath))
 
     # Setup solver-specific arguments
-    if args.solver == 'z3':
+    if solver == 'z3':
         boogieArgs += ' /proverOpt:PROVER_PATH=%s' % solverPath
-    if args.solver == 'cvc4':
+    elif solver == 'cvc4':
         boogieArgs += ' /proverOpt:PROVER_PATH=%s /proverOpt:SOLVER=CVC4 /proverOpt:C:"--incremental --produce-models --quiet"' % solverPath
         if args.arithmetic == 'mod' or args.arithmetic == 'mod-overflow':
             boogieArgs += ' /proverOpt:C:"--decision=justification --no-arrays-eager-index --arrays-eager-lemmas"'
@@ -215,6 +231,12 @@ def verifyProcedure(arguments):
     return (ERROR_NO_ERROR, result)
 
 def verifyAll(bplFile, args):
+
+    if args.solver == 'all':
+        solvers = ['z3', 'cvc4']
+    else:
+        solvers = [args.solver]
+
     verifyProcedureArgs = []
     procedureRegex = '^procedure(\s+(\{[^\}]*\}))+\s+(?P<procedure_name>[^\(]*)'
     prog = re.compile(procedureRegex)
@@ -223,11 +245,13 @@ def verifyAll(bplFile, args):
             result = prog.match(line)
             if (result):
                 procedureId = result.group('procedure_name')
-                verifyProcedureArgs.append({
-                    "bplFile": bplFile,
-                    "procedureId": procedureId,
-                    "args": args
-                })
+                for solver in solvers:
+                    verifyProcedureArgs.append({
+                        "bplFile": bplFile,
+                        "procedureId": procedureId,
+                        "args": args,
+                        "solver": solver
+                    })
     # Verify
     with multiprocessing.Pool(args.parallel) as p:
        verifierOutputList = p.map(verifyProcedure, verifyProcedureArgs)
@@ -238,8 +262,9 @@ def verifyAll(bplFile, args):
         functionName = result['function']
         if functionName is not None:
             if functionName in results:
-                # We need to pick one
-                assert false
+                # If current result is better keep it
+                if betterResult(results[functionName]['result'], result['result']):
+                    continue
             results[functionName] = {
                 'result': result['result'],
                 'issues': result['issues']
@@ -266,7 +291,7 @@ def main(tmpDir):
 
     parser.add_argument('--solc', type=str, help='Solidity compiler to use (with boogie translator)', default=os.path.dirname(os.path.realpath(__file__)) + '/solc')
     parser.add_argument('--boogie', type=str, help='Boogie verifier binary to use', default='boogie')
-    parser.add_argument('--solver', type=str, help='SMT solver used by the verifier', default='z3', choices=['z3', 'cvc4'])
+    parser.add_argument('--solver', type=str, help='SMT solver used by the verifier', default='all', choices=['all', 'z3', 'cvc4'])
     parser.add_argument('--solver-bin', type=str, help='Binary of the solver to use')
 
     args = parser.parse_args()
