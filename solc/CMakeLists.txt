@@ -22,7 +22,7 @@ if(SOLC_LINK_STATIC AND UNIX AND NOT APPLE)
 	)
 endif()
 
-# Solc-verify
+# Solc-verify 
 # - install the python script
 # - copy the python script to build so that we can test
 configure_file("solc-verify.py" "solc-verify.py" COPYONLY)
