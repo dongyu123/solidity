@@ -34,6 +34,7 @@
 #include <libsolidity/codegen/Compiler.h>
 #include <libsolidity/ast/AST.h>
 #include <libsolidity/analysis/TypeChecker.h>
+#include <libsolidity/analysis/SyntaxChecker.h>
 #include <liblangutil/ErrorReporter.h>
 
 #include <boost/test/unit_test.hpp>
@@ -61,6 +62,7 @@ evmasm::AssemblyItems compileContract(std::shared_ptr<CharStream> _sourceCode)
 	BOOST_CHECK(!!sourceUnit);
 
 	Scoper::assignScopes(*sourceUnit);
+	BOOST_REQUIRE(SyntaxChecker(errorReporter, false).checkSyntax(*sourceUnit));
 	GlobalContext globalContext;
 	std::map<ASTNode const*, std::shared_ptr<DeclarationContainer>> scopes;
 	NameAndTypeResolver resolver(globalContext, solidity::test::CommonOptions::get().evmVersion(), scopes, errorReporter);

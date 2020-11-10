@@ -160,6 +160,7 @@ static string const g_strMetadata = "metadata";
 static string const g_strMetadataHash = "metadata-hash";
 static string const g_strMetadataLiteral = "metadata-literal";
 static string const g_strModelCheckerEngine = "model-checker-engine";
+static string const g_strModelCheckerTimeout = "model-checker-timeout";
 static string const g_strNatspecDev = "devdoc";
 static string const g_strNatspecUser = "userdoc";
 static string const g_strNone = "none";
@@ -234,6 +235,7 @@ static string const g_argMetadata = g_strMetadata;
 static string const g_argMetadataHash = g_strMetadataHash;
 static string const g_argMetadataLiteral = g_strMetadataLiteral;
 static string const g_argModelCheckerEngine = g_strModelCheckerEngine;
+static string const g_argModelCheckerTimeout = g_strModelCheckerTimeout;
 static string const g_argNatspecDev = g_strNatspecDev;
 static string const g_argNatspecUser = g_strNatspecUser;
 static string const g_argOpcodes = g_strOpcodes;
@@ -638,6 +640,7 @@ bool CommandLineInterface::readInputFilesAndConfigureRemappings()
 					continue;
 				}
 
+				// NOTE: we ignore the FileNotFound exception as we manually check above
 				m_sourceCodes[infile.generic_string()] = readFileAsString(infile.string());
 				path = boost::filesystem::canonical(infile).string();
 			}
@@ -666,6 +669,10 @@ bool CommandLineInterface::parseLibraryOption(string const& _input)
 	catch (fs::filesystem_error const&)
 	{
 		// Thrown e.g. if path is too long.
+	}
+	catch (FileNotFound const&)
+	{
+		// Should not happen if `fs::is_regular_file` is correct.
 	}
 
 	vector<string> libraries;
@@ -762,7 +769,11 @@ void CommandLineInterface::createFile(string const& _fileName, string const& _da
 	ofstream outFile(pathName);
 	outFile << _data;
 	if (!outFile)
-		BOOST_THROW_EXCEPTION(FileError() << errinfo_comment("Could not write to file: " + pathName));
+	{
+		serr() << "Could not write to file \"" << pathName << "\"." << endl;
+		m_error = true;
+		return;
+	}
 }
 
 void CommandLineInterface::createJson(string const& _fileName, string const& _json)
@@ -1036,6 +1047,13 @@ General Information)").c_str(),
 			po::value<string>()->value_name("all,bmc,chc,none")->default_value("all"),
 			"Select model checker engine."
 		)
+		(
+			g_strModelCheckerTimeout.c_str(),
+			po::value<unsigned>()->value_name("ms"),
+			"Set model checker timeout per query in milliseconds. "
+			"The default is a deterministic resource limit. "
+			"A timeout of 0 means no resource/time restrictions for any query."
+		)
 	;
 	desc.add(smtCheckerOptions);
 
@@ -1171,6 +1189,7 @@ bool CommandLineInterface::processInput()
 			if (!boost::filesystem::is_regular_file(canonicalPath))
 				return ReadCallback::Result{false, "Not a valid file."};
 
+			// NOTE: we ignore the FileNotFound exception as we manually check above
 			auto contents = readFileAsString(canonicalPath.string());
 			m_sourceCodes[path.generic_string()] = contents;
 			return ReadCallback::Result{true, contents};
@@ -1257,7 +1276,17 @@ bool CommandLineInterface::processInput()
 		if (jsonFile.empty())
 			input = readStandardInput();
 		else
-			input = readFileAsString(jsonFile);
+		{
+			try
+			{
+				input = readFileAsString(jsonFile);
+			}
+			catch (FileNotFound const&)
+			{
+				serr() << "File not found: " << jsonFile << endl;
+				return false;
+			}
+		}
 		StandardCompiler compiler(fileReader);
 		sout() << compiler.compile(std::move(input)) << endl;
 		return true;
@@ -1434,8 +1463,11 @@ bool CommandLineInterface::processInput()
 			serr() << "Invalid option for --" << g_argModelCheckerEngine << ": " << engineStr << endl;
 			return false;
 		}
-		m_modelCheckerEngine = *engine;
+		m_modelCheckerSettings.engine = *engine;
 	}
+
+	if (m_args.count(g_argModelCheckerTimeout))
+		m_modelCheckerSettings.timeout = m_args[g_argModelCheckerTimeout].as<unsigned>();
 
 	m_compiler = make_unique<CompilerStack>(fileReader);
 
@@ -1451,8 +1483,8 @@ bool CommandLineInterface::processInput()
 			m_compiler->useMetadataLiteralSources(true);
 		if (m_args.count(g_argMetadataHash))
 			m_compiler->setMetadataHash(m_metadataHash);
-		if (m_args.count(g_argModelCheckerEngine))
-			m_compiler->setModelCheckerEngine(m_modelCheckerEngine);
+		if (m_args.count(g_argModelCheckerEngine) || m_args.count(g_argModelCheckerTimeout))
+			m_compiler->setModelCheckerSettings(m_modelCheckerSettings);
 		if (m_args.count(g_argInputFile))
 			m_compiler->setRemappings(m_remappings);
 
@@ -2012,8 +2044,29 @@ bool CommandLineInterface::assemble(
 
 		if (_language != yul::AssemblyStack::Language::Ewasm && _targetMachine == yul::AssemblyStack::Machine::Ewasm)
 		{
-			stack.translate(yul::AssemblyStack::Language::Ewasm);
-			stack.optimize();
+			try
+			{
+				stack.translate(yul::AssemblyStack::Language::Ewasm);
+				stack.optimize();
+			}
+			catch (Exception const& _exception)
+			{
+				serr() << "Exception in assembler: " << boost::diagnostic_information(_exception) << endl;
+				return false;
+			}
+			catch (std::exception const& _e)
+			{
+				serr() <<
+					"Unknown exception during compilation" <<
+					(_e.what() ? ": " + string(_e.what()) : ".") <<
+					endl;
+				return false;
+			}
+			catch (...)
+			{
+				serr() << "Unknown exception in assembler." << endl;
+				return false;
+			}
 
 			sout() << endl << "==========================" << endl;
 			sout() << endl << "Translated source:" << endl;
@@ -2024,6 +2077,7 @@ bool CommandLineInterface::assemble(
 		try
 		{
 			object = stack.assemble(_targetMachine);
+			object.bytecode->link(m_libraries);
 		}
 		catch (Exception const& _exception)
 		{

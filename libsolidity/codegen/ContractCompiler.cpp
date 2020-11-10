@@ -126,7 +126,7 @@ void ContractCompiler::initializeContext(
 	map<ContractDefinition const*, shared_ptr<Compiler const>> const& _otherCompilers
 )
 {
-	m_context.setExperimentalFeatures(_contract.sourceUnit().annotation().experimentalFeatures);
+	m_context.setUseABICoderV2(*_contract.sourceUnit().annotation().useABICoderV2);
 	m_context.setOtherCompilers(_otherCompilers);
 	m_context.setMostDerivedContract(_contract);
 	if (m_runtimeCompiler)
@@ -691,26 +691,7 @@ bool ContractCompiler::visit(InlineAssembly const& _inlineAssembly)
 		{
 			int const depositBefore = _assembly.stackHeight();
 			solAssert(!!decl->type(), "Type of declaration required but not yet determined.");
-			if (FunctionDefinition const* functionDef = dynamic_cast<FunctionDefinition const*>(decl))
-			{
-				solAssert(!ref->second.isOffset && !ref->second.isSlot, "");
-				functionDef = &functionDef->resolveVirtual(m_context.mostDerivedContract());
-				auto functionEntryLabel = m_context.functionEntryLabel(*functionDef).pushTag();
-				solAssert(functionEntryLabel.data() <= std::numeric_limits<size_t>::max(), "");
-				_assembly.appendLabelReference(static_cast<size_t>(functionEntryLabel.data()));
-				// If there is a runtime context, we have to merge both labels into the same
-				// stack slot in case we store it in storage.
-				if (CompilerContext* rtc = m_context.runtimeContext())
-				{
-					_assembly.appendConstant(u256(1) << 32);
-					_assembly.appendInstruction(Instruction::MUL);
-					auto runtimeEntryLabel = rtc->functionEntryLabel(*functionDef).toSubAssemblyTag(m_context.runtimeSub());
-					solAssert(runtimeEntryLabel.data() <= std::numeric_limits<size_t>::max(), "");
-					_assembly.appendLabelReference(static_cast<size_t>(runtimeEntryLabel.data()));
-					_assembly.appendInstruction(Instruction::OR);
-				}
-			}
-			else if (auto variable = dynamic_cast<VariableDeclaration const*>(decl))
+			if (auto variable = dynamic_cast<VariableDeclaration const*>(decl))
 			{
 				solAssert(!variable->immutable(), "");
 				if (variable->isConstant())
@@ -1324,13 +1305,13 @@ void ContractCompiler::appendModifierOrFunctionCode()
 
 	if (codeBlock)
 	{
-		std::set<ExperimentalFeature> experimentalFeaturesOutside = m_context.experimentalFeaturesActive();
-		m_context.setExperimentalFeatures(codeBlock->sourceUnit().annotation().experimentalFeatures);
+		bool coderV2Outside = m_context.useABICoderV2();
+		m_context.setUseABICoderV2(*codeBlock->sourceUnit().annotation().useABICoderV2);
 
 		m_returnTags.emplace_back(m_context.newTag(), m_context.stackHeight());
 		codeBlock->accept(*this);
 
-		m_context.setExperimentalFeatures(experimentalFeaturesOutside);
+		m_context.setUseABICoderV2(coderV2Outside);
 
 		solAssert(!m_returnTags.empty(), "");
 		m_context << m_returnTags.back().first;

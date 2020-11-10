@@ -413,13 +413,13 @@ bool TypeChecker::visit(FunctionDefinition const& _function)
 				m_errorReporter.typeError(4103_error, _var.location(), message);
 			}
 			else if (
-				!experimentalFeatureActive(ExperimentalFeature::ABIEncoderV2) &&
+				!useABICoderV2() &&
 				!typeSupportedByOldABIEncoder(*type(_var), _function.libraryFunction())
 			)
 			{
 				string message =
-					"This type is only supported in ABIEncoderV2. "
-					"Use \"pragma experimental ABIEncoderV2;\" to enable the feature.";
+					"This type is only supported in ABI coder v2. "
+					"Use \"pragma abicoder v2;\" to enable the feature.";
 				if (_function.isConstructor())
 					message +=
 						" Alternatively, make the contract abstract and supply the "
@@ -585,7 +585,7 @@ bool TypeChecker::visit(VariableDeclaration const& _variable)
 	else if (_variable.visibility() >= Visibility::Public)
 	{
 		FunctionType getter(_variable);
-		if (!experimentalFeatureActive(ExperimentalFeature::ABIEncoderV2))
+		if (!useABICoderV2())
 		{
 			vector<string> unsupportedTypes;
 			for (auto const& param: getter.parameterTypes() + getter.returnParameterTypes())
@@ -595,9 +595,9 @@ bool TypeChecker::visit(VariableDeclaration const& _variable)
 				m_errorReporter.typeError(
 					2763_error,
 					_variable.location(),
-					"The following types are only supported for getters in ABIEncoderV2: " +
+					"The following types are only supported for getters in ABI coder v2: " +
 					joinHumanReadable(unsupportedTypes) +
-					". Either remove \"public\" or use \"pragma experimental ABIEncoderV2;\" to enable the feature."
+					". Either remove \"public\" or use \"pragma abicoder v2;\" to enable the feature."
 				);
 		}
 		if (!getter.interfaceFunctionType())
@@ -710,14 +710,14 @@ bool TypeChecker::visit(EventDefinition const& _eventDef)
 		if (!type(*var)->interfaceType(false))
 			m_errorReporter.typeError(3417_error, var->location(), "Internal or recursive type is not allowed as event parameter type.");
 		if (
-			!experimentalFeatureActive(ExperimentalFeature::ABIEncoderV2) &&
+			!useABICoderV2() &&
 			!typeSupportedByOldABIEncoder(*type(*var), false /* isLibrary */)
 		)
 			m_errorReporter.typeError(
 				3061_error,
 				var->location(),
-				"This type is only supported in ABIEncoderV2. "
-				"Use \"pragma experimental ABIEncoderV2;\" to enable the feature."
+				"This type is only supported in ABI coder v2. "
+				"Use \"pragma abicoder v2;\" to enable the feature."
 			);
 	}
 	if (_eventDef.isAnonymous() && numIndexed > 4)
@@ -1915,7 +1915,7 @@ void TypeChecker::typeCheckABIEncodeFunctions(
 	bool const isPacked = _functionType->kind() == FunctionType::Kind::ABIEncodePacked;
 	solAssert(_functionType->padArguments() != isPacked, "ABI function with unexpected padding");
 
-	bool const abiEncoderV2 = experimentalFeatureActive(ExperimentalFeature::ABIEncoderV2);
+	bool const abiEncoderV2 = useABICoderV2();
 
 	// Check for named arguments
 	if (!_functionCall.names().empty())
@@ -2207,7 +2207,7 @@ void TypeChecker::typeCheckFunctionGeneralChecks(
 		_functionType->kind() == FunctionType::Kind::Creation ||
 		_functionType->kind() == FunctionType::Kind::Event;
 
-	if (callRequiresABIEncoding && !experimentalFeatureActive(ExperimentalFeature::ABIEncoderV2))
+	if (callRequiresABIEncoding && !useABICoderV2())
 	{
 		solAssert(!isVariadic, "");
 		solAssert(parameterTypes.size() == arguments.size(), "");
@@ -2223,8 +2223,8 @@ void TypeChecker::typeCheckFunctionGeneralChecks(
 					2443_error,
 					paramArgMap[i]->location(),
 					"The type of this parameter, " + parameterTypes[i]->toString(true) + ", "
-					"is only supported in ABIEncoderV2. "
-					"Use \"pragma experimental ABIEncoderV2;\" to enable the feature."
+					"is only supported in ABI coder v2. "
+					"Use \"pragma abicoder v2;\" to enable the feature."
 				);
 		}
 
@@ -2237,8 +2237,8 @@ void TypeChecker::typeCheckFunctionGeneralChecks(
 					2428_error,
 					_functionCall.location(),
 					"The type of return parameter " + toString(i + 1) + ", " + returnParameterTypes[i]->toString(true) + ", "
-					"is only supported in ABIEncoderV2. "
-					"Use \"pragma experimental ABIEncoderV2;\" to enable the feature."
+					"is only supported in ABI coder v2. "
+					"Use \"pragma abicoder v2;\" to enable the feature."
 				);
 		}
 	}
@@ -2355,7 +2355,7 @@ bool TypeChecker::visit(FunctionCall const& _functionCall)
 		{
 			returnTypes = typeCheckABIDecodeAndRetrieveReturnType(
 				_functionCall,
-				experimentalFeatureActive(ExperimentalFeature::ABIEncoderV2)
+				useABICoderV2()
 			);
 			break;
 		}
@@ -2766,7 +2766,8 @@ bool TypeChecker::visit(MemberAccess const& _memberAccess)
 
 		if (!funType->bound())
 			if (auto contractType = dynamic_cast<ContractType const*>(exprType))
-				requiredLookup = contractType->isSuper() ? VirtualLookup::Super : VirtualLookup::Virtual;
+				if (contractType->isSuper())
+					requiredLookup = VirtualLookup::Super;
 	}
 
 	annotation.requiredLookup = requiredLookup;
@@ -3404,10 +3405,11 @@ void TypeChecker::requireLValue(Expression const& _expression, bool _ordinaryAss
 	m_errorReporter.typeError(errorId, _expression.location(), description);
 }
 
-bool TypeChecker::experimentalFeatureActive(ExperimentalFeature _feature) const
+bool TypeChecker::useABICoderV2() const
 {
 	solAssert(m_currentSourceUnit, "");
 	if (m_currentContract)
 		solAssert(m_currentSourceUnit == &m_currentContract->sourceUnit(), "");
-	return m_currentSourceUnit->annotation().experimentalFeatures.count(_feature);
+	return *m_currentSourceUnit->annotation().useABICoderV2;
+
 }

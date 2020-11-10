@@ -425,7 +425,7 @@ bool IRGeneratorForStatements::visit(TupleExpression const& _tuple)
 				"(" <<
 				("add(" + mpos + ", " + to_string(i * arrayType.memoryStride()) + ")") <<
 				", " <<
-				converted.name() <<
+				converted.commaSeparatedList() <<
 				")\n";
 		}
 	}
@@ -2733,7 +2733,7 @@ IRVariable IRGeneratorForStatements::readFromLValue(IRLValue const& _lvalue)
 				define(result) << _storage.slot << "\n";
 			else if (std::holds_alternative<string>(_storage.offset))
 				define(result) <<
-					m_utils.readFromStorageDynamic(_lvalue.type, false) <<
+					m_utils.readFromStorageDynamic(_lvalue.type, true) <<
 					"(" <<
 					_storage.slot <<
 					", " <<
@@ -2741,7 +2741,7 @@ IRVariable IRGeneratorForStatements::readFromLValue(IRLValue const& _lvalue)
 					")\n";
 			else
 				define(result) <<
-					m_utils.readFromStorage(_lvalue.type, std::get<unsigned>(_storage.offset), false) <<
+					m_utils.readFromStorage(_lvalue.type, std::get<unsigned>(_storage.offset), true) <<
 					"(" <<
 					_storage.slot <<
 					")\n";

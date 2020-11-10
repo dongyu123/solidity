@@ -420,7 +420,7 @@ std::optional<Json::Value> checkSettingsKeys(Json::Value const& _input)
 
 std::optional<Json::Value> checkModelCheckerSettingsKeys(Json::Value const& _input)
 {
-	static set<string> keys{"engine"};
+	static set<string> keys{"engine", "timeout"};
 	return checkKeys(_input, keys, "modelCheckerSettings");
 }
 
@@ -885,7 +885,14 @@ std::variant<StandardCompiler::InputsAndSettings, Json::Value> StandardCompiler:
 		std::optional<ModelCheckerEngine> engine = ModelCheckerEngine::fromString(modelCheckerSettings["engine"].asString());
 		if (!engine)
 			return formatFatalError("JSONError", "Invalid model checker engine requested.");
-		ret.modelCheckerEngine = *engine;
+		ret.modelCheckerSettings.engine = *engine;
+	}
+
+	if (modelCheckerSettings.isMember("timeout"))
+	{
+		if (!modelCheckerSettings["timeout"].isUInt())
+			return formatFatalError("JSONError", "modelCheckerSettings.timeout must be an unsigned integer.");
+		ret.modelCheckerSettings.timeout = modelCheckerSettings["timeout"].asUInt();
 	}
 
 	return { std::move(ret) };
@@ -908,7 +915,7 @@ Json::Value StandardCompiler::compileSolidity(StandardCompiler::InputsAndSetting
 	compilerStack.useMetadataLiteralSources(_inputsAndSettings.metadataLiteralSources);
 	compilerStack.setMetadataHash(_inputsAndSettings.metadataHash);
 	compilerStack.setRequestedContractNames(requestedContractNames(_inputsAndSettings.outputSelection));
-	compilerStack.setModelCheckerEngine(_inputsAndSettings.modelCheckerEngine);
+	compilerStack.setModelCheckerSettings(_inputsAndSettings.modelCheckerSettings);
 
 	compilerStack.enableEvmBytecodeGeneration(isEvmBytecodeRequested(_inputsAndSettings.outputSelection));
 	compilerStack.enableIRGeneration(isIRRequested(_inputsAndSettings.outputSelection));
@@ -1173,8 +1180,6 @@ Json::Value StandardCompiler::compileYul(InputsAndSettings _inputsAndSettings)
 		return formatFatalError("JSONError", "Yul mode does not support smtlib2responses.");
 	if (!_inputsAndSettings.remappings.empty())
 		return formatFatalError("JSONError", "Field \"settings.remappings\" cannot be used for Yul.");
-	if (!_inputsAndSettings.libraries.empty())
-		return formatFatalError("JSONError", "Field \"settings.libraries\" cannot be used for Yul.");
 	if (_inputsAndSettings.revertStrings != RevertStrings::Default)
 		return formatFatalError("JSONError", "Field \"settings.debug.revertStrings\" cannot be used for Yul.");
 
@@ -1226,6 +1231,11 @@ Json::Value StandardCompiler::compileYul(InputsAndSettings _inputsAndSettings)
 	MachineAssemblyObject object;
 	MachineAssemblyObject runtimeObject;
 	tie(object, runtimeObject) = stack.assembleAndGuessRuntime();
+
+	if (object.bytecode)
+		object.bytecode->link(_inputsAndSettings.libraries);
+	if (runtimeObject.bytecode)
+		runtimeObject.bytecode->link(_inputsAndSettings.libraries);
 
 	for (string const& objectKind: vector<string>{"bytecode", "deployedBytecode"})
 		if (isArtifactRequested(

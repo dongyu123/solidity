@@ -231,7 +231,7 @@ Input Description
             "cse": false,
             // Optimize representation of literal numbers and strings in code.
             "constantOptimizer": false,
-            // The new Yul optimizer. Mostly operates on the code of ABIEncoderV2
+            // The new Yul optimizer. Mostly operates on the code of ABI coder v2
             // and inline assembly.
             // It is activated together with the global optimizer setting
             // and can be deactivated here.
@@ -346,7 +346,12 @@ Input Description
       "modelCheckerSettings":
       {
         // Choose which model checker engine to use: all (default), bmc, chc, none.
-        "engine": "chc"
+        "engine": "chc",
+        // Timeout for each SMT query in milliseconds.
+        // If this option is not given, the SMTChecker will use a deterministic
+        // resource limit by default.
+        // A given timeout of 0 means no resource/time restrictions for any query.
+        "timeout": 20000
       }
     }
 
