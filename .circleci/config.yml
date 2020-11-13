@@ -1135,6 +1135,28 @@ jobs:
           name: Test solc-verify on Syntax tests
           command: ./test/solc-verify/test_syntax_with_boogie.sh
 
+  t_ubu_sverif_sem:
+    docker:
+      - image: << pipeline.parameters.ubuntu-2004-docker-image >>
+    environment:
+      TERM: xterm
+    steps:
+      - checkout
+      - attach_workspace:
+          at: build
+      - run: *setup_sverif_cvc4
+      - run: *setup_sverif_z3
+      - run: *setup_sverif_boogie
+      - run:
+          name: Install dependencies
+          command: |
+            apt-get -qq update
+            apt-get -qy install python3 python3-pip
+            pip3 install psutil
+      - run:
+          name: Test solc-verify on Semantic tests
+          command: ./test/solc-verify/test_semantic_with_boogie.sh
+
   t_ubu_sverif_trf:
     docker:
       - image: << pipeline.parameters.ubuntu-2004-docker-image >>
@@ -1178,6 +1200,7 @@ workflows:
       - b_ubu_sverif: *workflow_trigger_on_tags
       - t_ubu_sverif_bg: *workflow_sverif
       - t_ubu_sverif_syn: *workflow_sverif
+      - t_ubu_sverif_sem: *workflow_sverif
       - t_ubu_sverif_trf: *workflow_sverif
 
   weekly:
@@ -1275,4 +1298,5 @@ workflows:
       - b_ubu_sverif: *workflow_trigger_on_tags
       - t_ubu_sverif_bg: *workflow_sverif
       - t_ubu_sverif_syn: *workflow_sverif
+      - t_ubu_sverif_sem: *workflow_sverif
       - t_ubu_sverif_trf: *workflow_sverif
