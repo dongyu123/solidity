@@ -1,34 +1,67 @@
-### 0.7.5 (unreleased)
+### 0.7.6 (unreleased)
+
+Language Features:
+ * Code generator: Support copying dynamically encoded structs from calldata to memory.
+ * Code generator: Support copying of nested arrays from calldata to memory.
+ * The fallback function can now also have a single ``calldata`` argument (equaling ``msg.data``) and return ``bytes memory`` (which will not be ABI-encoded but returned as-is).
+ * Wasm backend: Add ``i32.select`` and ``i64.select`` instructions.
+
+Compiler Features:
+ * Code Generator: Avoid memory allocation for default value if it is not used.
+ * SMTChecker: Support named arguments in function calls.
+ * SMTChecker: Support struct constructor.
+ * SMTChecker: Support getters.
+ * SMTChecker: Support early returns in the CHC engine.
+ * Standard-Json: Properly filter the requested output artifacts.
+
+Bugfixes:
+ * Code generator: Do not pad empty string literals with a single 32-byte zero field in the ABI coder v1.
+ * SMTChecker: Fix internal compiler error when doing bitwise compound assignment with string literals.
+ * SMTChecker: Fix internal error when trying to generate counterexamples with old z3.
+ * SMTChecker: Fix segmentation fault that could occur on certain SMT-enabled sources when no SMT solver was available.
+ * SMTChecker: Fix cast string literals to byte arrays.
+ * Type Checker: ``super`` is not available in libraries.
+ * Yul Optimizer: Fix a bug in NameSimplifier where a new name created by NameSimplifier could also be created by NameDispenser.
+ * Yul Optimizer: Removed NameSimplifier from optimization steps available to users.
+
+### 0.7.5 (2020-11-18)
 
 Language Features:
  * Ability to select the abi coder using ``pragma abicoder v1`` and ``pragma abicoder v2``.
+ * Inline Assembly: Use ``.offset`` and ``.length`` for calldata variables of dynamic array type to access their calldata offset and length (number of elements). Both of them can also be assigned to.
  * Immutable variables with literal number values are considered pure.
 
 Compiler Features:
- * Command Line Interface: New option ``--experimental-via-ir`` allows switching compilation process to go through
-   the Yul intermediate representation. This is highly experimental and is used for development purposes.
- * Standard JSON: New option ``settings.viaIR`` allows the same switch as ``--experimental-via-ir`` on the commandline.
+ * Assembler: Perform linking in assembly mode when library addresses are provided.
+ * Command Line Interface: New option ``--experimental-via-ir`` allows switching compilation process to go through the Yul intermediate representation. This is highly experimental and is used for development purposes.
+ * Command Line Interface: New option ``--model-checker-timeout`` sets a timeout in milliseconds for each individual query performed by the SMTChecker.
  * Command Line Interface: Report error if file could not be read in ``--standard-json`` mode.
  * Command Line interface: Report proper error for each output file which could not be written. Previously an exception was thrown, and execution aborted, on the first error.
  * SMTChecker: Add division by zero checks in the CHC engine.
- * SMTChecker: Support ``selector`` for expressions with value known at compile-time.
  * SMTChecker: More precise analysis of external calls using ``this``.
- * Command Line Interface: New option ``--model-checker-timeout`` sets a timeout in milliseconds for each individual query performed by the SMTChecker.
+ * SMTChecker: Support ``selector`` for expressions with value known at compile-time.
  * Standard JSON: New option ``modelCheckerSettings.timeout`` sets a timeout in milliseconds for each individual query performed by the SMTChecker.
- * Assembler: Perform linking in assembly mode when library addresses are provided.
+ * Standard JSON: New option ``settings.viaIR`` allows the same switch as ``--experimental-via-ir`` on the commandline.
 
 
 Bugfixes:
- * SMTChecker: Fix lack of reporting potential violations when using only the CHC engine.
- * SMTChecker: Fix internal error on conversion from string literal to byte.
- * SMTChecker: Fix internal error when using tuples of rational literals inside the conditional operator.
- * SMTChecker: Fix internal error when assigning state variable via contract's name.
- * SMTChecker: Fix incorrect counterexamples reported by the CHC engine.
- * SMTChecker: Fix false negative in modifier applied multiple times.
- * SMTChecker: Fix internal error in the BMC engine when inherited contract from a different source unit has private state variables.
- * SMTChecker: Fix internal error when ``array.push()`` is used as the LHS of an assignment.
- * SMTChecker: Fix CHC false positives when branches are used inside modifiers.
  * Code generator: Fix missing creation dependency tracking for abstract contracts.
+ * Command Line Interface: Fix write error when the directory passed to ``--output-dir`` ends with a slash.
+ * Command Line Interface: Reject duplicate libraries in ``--libraries`` option instead of arbitrarily choosing one.
+ * NatSpec: Fix internal error when inheriting return parameter documentation but the parameter names differ between base and inherited.
+ * SMTChecker: Fix CHC false positives when branches are used inside modifiers.
+ * SMTChecker: Fix false negative in modifier applied multiple times.
+ * SMTChecker: Fix incorrect counterexamples reported by the CHC engine.
+ * SMTChecker: Fix internal error in the BMC engine when inherited contract from a different source unit has private state variables.
+ * SMTChecker: Fix internal error on conversion from string literal to byte.
+ * SMTChecker: Fix internal error when ``array.push()`` is used as the LHS of an assignment.
+ * SMTChecker: Fix internal error when assigning state variable via contract's name.
+ * SMTChecker: Fix internal error when using tuples of rational literals inside the conditional operator.
+ * SMTChecker: Fix lack of reporting potential violations when using only the CHC engine.
+ * Standard JSON: Fix library addresses specified in ``libraries`` being used for linking even if the file names do not match.
+
+AST Changes:
+ * New member ``suffix`` for inline assembly identifiers. Currently supported values are ``"slot"``, ``"offset"`` and ``"length"`` to access the components of a Solidity variable.
 
 
 ### 0.7.4 (2020-10-19)

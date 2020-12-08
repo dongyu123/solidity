@@ -63,8 +63,8 @@
 #include <libyul/backends/evm/ConstantOptimiser.h>
 #include <libyul/AsmAnalysis.h>
 #include <libyul/AsmAnalysisInfo.h>
-#include <libyul/AsmData.h>
 #include <libyul/AsmPrinter.h>
+#include <libyul/AST.h>
 #include <libyul/Object.h>
 
 #include <libyul/backends/wasm/WasmDialect.h>
@@ -105,6 +105,7 @@ void OptimiserSuite::run(
 	// ForLoopInitRewriter. Run them first to be able to run arbitrary sequences safely.
 	suite.runSequence("hfgo", ast);
 
+	NameSimplifier::run(suite.m_context, ast);
 	// Now the user-supplied part
 	suite.runSequence(_optimisationSequence, ast);
 
@@ -140,6 +141,9 @@ void OptimiserSuite::run(
 		if (ast.statements.size() > 1 && std::get<Block>(ast.statements.front()).statements.empty())
 			ast.statements.erase(ast.statements.begin());
 	}
+
+	suite.m_dispenser.reset(ast);
+	NameSimplifier::run(suite.m_context, ast);
 	VarNameCleaner::run(suite.m_context, ast);
 
 	*_object.analysisInfo = AsmAnalyzer::analyzeStrictAssertCorrect(_dialect, _object);
@@ -191,7 +195,6 @@ map<string, unique_ptr<OptimiserStep>> const& OptimiserSuite::allSteps()
 			LiteralRematerialiser,
 			LoadResolver,
 			LoopInvariantCodeMotion,
-			NameSimplifier,
 			RedundantAssignEliminator,
 			ReasoningBasedSimplifier,
 			Rematerialiser,
@@ -203,6 +206,7 @@ map<string, unique_ptr<OptimiserStep>> const& OptimiserSuite::allSteps()
 			VarDeclInitializer
 		>();
 	// Does not include VarNameCleaner because it destroys the property of unique names.
+	// Does not include NameSimplifier.
 	return instance;
 }
 
@@ -230,7 +234,6 @@ map<string, char> const& OptimiserSuite::stepNameToAbbreviationMap()
 		{LiteralRematerialiser::name,         'T'},
 		{LoadResolver::name,                  'L'},
 		{LoopInvariantCodeMotion::name,       'M'},
-		{NameSimplifier::name,                'N'},
 		{ReasoningBasedSimplifier::name,      'R'},
 		{RedundantAssignEliminator::name,     'r'},
 		{Rematerialiser::name,                'm'},
@@ -364,6 +367,9 @@ void OptimiserSuite::runSequenceUntilStable(
 	size_t maxRounds
 )
 {
+	if (_steps.empty())
+		return;
+
 	size_t codeSize = 0;
 	for (size_t rounds = 0; rounds < maxRounds; ++rounds)
 	{

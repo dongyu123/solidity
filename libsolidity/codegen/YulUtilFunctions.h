@@ -104,6 +104,15 @@ public:
 	/// signature: (value, bytes) -> result
 	std::string maskBytesFunctionDynamic();
 
+	/// Zeroes out all bytes above the first ``_bytes`` lower order bytes.
+	/// signature: (value) -> result
+	std::string maskLowerOrderBytesFunction(size_t _bytes);
+
+	/// Zeroes out all bytes above the first ``bytes`` lower order bytes.
+	/// @note ``bytes`` has to be small enough not to overflow ``8 * bytes``.
+	/// signature: (value, bytes) -> result
+	std::string maskLowerOrderBytesFunctionDynamic();
+
 	/// @returns the name of a function that rounds its input to the next multiple
 	/// of 32 or the input if it is a multiple of 32.
 	/// signature: (value) -> result
@@ -162,8 +171,9 @@ public:
 	std::string arrayLengthFunction(ArrayType const& _type);
 
 	/// @returns the name of a function that resizes a storage array
+	/// for statically sized arrays, it will just clean-up elements of array starting from newLen until the end
 	/// signature: (array, newLen)
-	std::string resizeDynamicArrayFunction(ArrayType const& _type);
+	std::string resizeArrayFunction(ArrayType const& _type);
 
 	/// @returns the name of a function that reduces the size of a storage array by one element
 	/// signature: (array)
@@ -186,13 +196,17 @@ public:
 	/// signature: (slot) ->
 	std::string clearStorageArrayFunction(ArrayType const& _type);
 
-	/// @returns the name of a function that will copy array from calldata or memory to storage
+	/// @returns the name of a function that will copy an array to storage
 	/// signature (to_slot, from_ptr) ->
 	std::string copyArrayToStorageFunction(ArrayType const& _fromType, ArrayType const& _toType);
 
-	/// @returns the name of a function that will copy a byte array from calldata or memory to storage
+	/// @returns the name of a function that will copy a byte array to storage
 	/// signature (to_slot, from_ptr) ->
 	std::string copyByteArrayToStorageFunction(ArrayType const& _fromType, ArrayType const& _toType);
+
+	/// @returns the name of a function that will copy an array of value types from storage to storage.
+	/// signature (to_slot, from_slot) ->
+	std::string copyValueArrayStorageToStorageFunction(ArrayType const& _fromType, ArrayType const& _toType);
 
 	/// Returns the name of a function that will convert a given length to the
 	/// size in memory (number of storage slots or calldata/memory bytes) it
@@ -274,6 +288,7 @@ public:
 	/// Returns the name of a function will write the given value to
 	/// the specified slot and offset. If offset is not given, it is expected as
 	/// runtime parameter.
+	/// For reference types, offset is checked to be zero at runtime.
 	/// signature: (slot, [offset,] value)
 	std::string updateStorageValueFunction(
 		Type const& _fromType,

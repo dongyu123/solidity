@@ -101,6 +101,8 @@ string TextTransform::operator()(wasm::Literal const& _literal)
 
 string TextTransform::operator()(wasm::StringLiteral const& _literal)
 {
+	// StringLiteral is a special AST element used for certain builtins.
+	// The output of this will not be valid WebAssembly.
 	string quoted = boost::replace_all_copy(_literal.value, "\\", "\\\\");
 	boost::replace_all(quoted, "\"", "\\\"");
 	return "\"" + quoted + "\"";
@@ -120,8 +122,11 @@ string TextTransform::operator()(wasm::BuiltinCall const& _builtinCall)
 {
 	string args = joinTransformed(_builtinCall.arguments);
 	string funcName = _builtinCall.functionName;
+	// These are prefixed in the dialect, but are actually overloaded instructions in WebAssembly.
 	if (funcName == "i32.drop" || funcName == "i64.drop")
 		funcName = "drop";
+	else if (funcName == "i32.select" || funcName == "i64.select")
+		funcName = "select";
 	return "(" + funcName + (args.empty() ? "" : " " + args) + ")";
 }
 

@@ -60,6 +60,7 @@
 #include <libsolutil/CommonIO.h>
 #include <libsolutil/JSON.h>
 
+#include <algorithm>
 #include <memory>
 
 #include <boost/filesystem.hpp>
@@ -690,9 +691,16 @@ bool CommandLineInterface::parseLibraryOption(string const& _input)
 				serr() << "Colon separator missing in library address specifier \"" << lib << "\"" << endl;
 				return false;
 			}
+
 			string libName(lib.begin(), lib.begin() + static_cast<ptrdiff_t>(colon));
-			string addrString(lib.begin() + static_cast<ptrdiff_t>(colon) + 1, lib.end());
 			boost::trim(libName);
+			if (m_libraries.count(libName))
+			{
+				serr() << "Address specified more than once for library \"" << libName << "\"." << endl;
+				return false;
+			}
+
+			string addrString(lib.begin() + static_cast<ptrdiff_t>(colon) + 1, lib.end());
 			boost::trim(addrString);
 			if (addrString.substr(0, 2) == "0x")
 				addrString = addrString.substr(2);
@@ -756,12 +764,15 @@ map<string, Json::Value> CommandLineInterface::parseAstFromInput()
 void CommandLineInterface::createFile(string const& _fileName, string const& _data)
 {
 	namespace fs = boost::filesystem;
-	// create directory if not existent
-	fs::path p(m_args.at(g_argOutputDir).as<string>());
-	// Do not try creating the directory if the first item is . or ..
-	if (p.filename() != "." && p.filename() != "..")
-		fs::create_directories(p);
-	string pathName = (p / _fileName).string();
+
+	fs::path outputDir(m_args.at(g_argOutputDir).as<string>());
+
+	// NOTE: create_directories() raises an exception if the path consists solely of '.' or '..'
+	// (or equivalent such as './././.'). Paths like 'a/b/.' and 'a/b/..' are fine though.
+	// The simplest workaround is to use an absolute path.
+	fs::create_directories(fs::absolute(outputDir));
+
+	string pathName = (outputDir / _fileName).string();
 	if (fs::exists(pathName) && !m_args.count(g_strOverwrite))
 	{
 		serr() << "Refusing to overwrite existing file \"" << pathName << "\" (use --" << g_strOverwrite << " to force)." << endl;
@@ -1911,20 +1922,26 @@ bool CommandLineInterface::link()
 		{
 			while (it != end && *it != '_') ++it;
 			if (it == end) break;
-			if (end - it < placeholderSize)
+			if (
+				end - it < placeholderSize ||
+				*(it + 1) != '_' ||
+				*(it + placeholderSize - 2) != '_' ||
+				*(it + placeholderSize - 1) != '_'
+			)
 			{
-				serr() << "Error in binary object file " << src.first << " at position " << (end - src.second.begin()) << endl;
+				serr() << "Error in binary object file " << src.first << " at position " << (it - src.second.begin()) << endl;
+				serr() << '"' << string(it, it + min(placeholderSize, static_cast<int>(end - it))) << "\" is not a valid link reference." << endl;
 				return false;
 			}
 
-			string name(it, it + placeholderSize);
-			if (librariesReplacements.count(name))
+			string foundPlaceholder(it, it + placeholderSize);
+			if (librariesReplacements.count(foundPlaceholder))
 			{
-				string hexStr(toHex(librariesReplacements.at(name).asBytes()));
+				string hexStr(toHex(librariesReplacements.at(foundPlaceholder).asBytes()));
 				copy(hexStr.begin(), hexStr.end(), it);
 			}
 			else
-				serr() << "Reference \"" << name << "\" in file \"" << src.first << "\" still unresolved." << endl;
+				serr() << "Reference \"" << foundPlaceholder << "\" in file \"" << src.first << "\" still unresolved." << endl;
 			it += placeholderSize;
 		}
 		// Remove hints for resolved libraries.

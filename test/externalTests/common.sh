@@ -40,9 +40,10 @@ function verify_version_input
 
 function setup
 {
-    local branch="$1"
+    local soljson="$1"
+    local branch="$2"
 
-    setup_solcjs "$DIR" "$SOLJSON" "$branch" "solc"
+    setup_solcjs "$DIR" "$soljson" "$branch" "solc"
     cd solc
 }
 
@@ -80,22 +81,23 @@ function download_project
     printLog "Cloning $branch of $repo..."
     git clone --depth 1 "$repo" -b "$branch" "$dir/ext"
     cd ext
-    echo "Current commit hash: `git rev-parse HEAD`"
+    echo "Current commit hash: $(git rev-parse HEAD)"
 }
 
 function force_truffle_version
 {
-    local repo="$1"
+    local version="$1"
 
-    sed -i 's/"truffle":\s*".*"/"truffle": "^5.0.42"/g' package.json
+    sed -i 's/"truffle":\s*".*"/"truffle": "'"$version"'"/g' package.json
 }
 
 function truffle_setup
 {
-    local repo="$1"
-    local branch="$2"
+    local soljson="$1"
+    local repo="$2"
+    local branch="$3"
 
-    setup_solcjs "$DIR" "$SOLJSON" "master" "solc"
+    setup_solcjs "$DIR" "$soljson" "master" "solc"
     download_project "$repo" "$branch" "$DIR"
 }
 
@@ -104,14 +106,7 @@ function replace_version_pragmas
     # Replace fixed-version pragmas (part of Consensys best practice).
     # Include all directories to also cover node dependencies.
     printLog "Replacing fixed-version pragmas..."
-    find . test -name '*.sol' -type f -print0 | xargs -0 sed -i -e 's/pragma solidity [\^0-9\.]*/pragma solidity >=0.0/'
-}
-
-function replace_libsolc_call
-{
-    # Change "compileStandard" to "compile" (needed for pre-5.x Truffle)
-    printLog "Replacing libsolc compile call in Truffle..."
-    sed -i s/solc.compileStandard/solc.compile/ "node_modules/truffle/build/cli.bundled.js"
+    find . test -name '*.sol' -type f -print0 | xargs -0 sed -i -E -e 's/pragma solidity [^;]+;/pragma solidity >=0.0;/'
 }
 
 function find_truffle_config
@@ -140,6 +135,9 @@ function force_solc_truffle_modules
             rm -rf solc
             git clone --depth 1 -b master https://github.com/ethereum/solc-js.git solc
             cp "$1" solc/soljson.js
+
+            cd solc
+            npm install
         fi
     )
     done
@@ -178,20 +176,6 @@ function force_solc_settings
     echo "module.exports['compilers']['solc']['settings'] = { optimizer: $settings, evmVersion: \"$evmVersion\" };" >> "$config_file"
 }
 
-function force_abi_v2
-{
-    # Add "pragma experimental ABIEncoderV2" to all files.
-    printLog "Forcibly enabling ABIEncoderV2..."
-    find contracts test -name '*.sol' -type f -print0 | \
-    while IFS= read -r -d '' file
-    do
-        # Only add the pragma if it is not already there.
-        if grep -q -v 'pragma experimental ABIEncoderV2' "$file"; then
-            sed -i -e '1 i pragma experimental ABIEncoderV2;' "$file"
-        fi
-    done
-}
-
 function verify_compiler_version
 {
     local solc_version="$1"
@@ -207,11 +191,12 @@ function clean
 
 function run_install
 {
-    local init_fn="$1"
+    local soljson="$1"
+    local init_fn="$2"
     printLog "Running install function..."
 
     replace_version_pragmas
-    force_solc "$CONFIG" "$DIR" "$SOLJSON"
+    force_solc "$CONFIG" "$DIR" "$soljson"
 
     $init_fn
 }
@@ -232,11 +217,12 @@ function run_test
 
 function truffle_run_test
 {
-    local compile_fn="$1"
-    local test_fn="$2"
+    local soljson="$1"
+    local compile_fn="$2"
+    local test_fn="$3"
 
     replace_version_pragmas
-    force_solc "$CONFIG" "$DIR" "$SOLJSON"
+    force_solc "$CONFIG" "$DIR" "$soljson"
 
     printLog "Checking optimizer level..."
     if [ -z "$OPTIMIZER_LEVEL" ]; then
@@ -257,10 +243,6 @@ function truffle_run_test
     do
         clean
         force_solc_settings "$CONFIG" "$optimize" "istanbul"
-        # Force ABIEncoderV2 in the last step. Has to be the last because code is modified.
-        if [ "$FORCE_ABIv2" = true ]; then
-            [[ "$optimize" =~ yul ]] && force_abi_v2
-        fi
 
         printLog "Running compile function..."
         $compile_fn

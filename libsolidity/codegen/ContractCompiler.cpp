@@ -31,7 +31,7 @@
 
 #include <libyul/AsmAnalysisInfo.h>
 #include <libyul/AsmAnalysis.h>
-#include <libyul/AsmData.h>
+#include <libyul/AST.h>
 #include <libyul/backends/evm/AsmCodeGen.h>
 #include <libyul/backends/evm/EVMMetrics.h>
 #include <libyul/backends/evm/EVMDialect.h>
@@ -467,10 +467,21 @@ void ContractCompiler::appendFunctionSelector(ContractDefinition const& _contrac
 				appendCallValueCheck();
 
 			solAssert(fallback->isFallback(), "");
-			solAssert(FunctionType(*fallback).parameterTypes().empty(), "");
-			solAssert(FunctionType(*fallback).returnParameterTypes().empty(), "");
+			m_context.setStackOffset(0);
+
+			if (!FunctionType(*fallback).parameterTypes().empty())
+				m_context << u256(0) << Instruction::CALLDATASIZE;
+
 			fallback->accept(*this);
-			m_context << Instruction::STOP;
+
+			if (FunctionType(*fallback).returnParameterTypes().empty())
+				m_context << Instruction::STOP;
+			else
+			{
+				m_context << Instruction::DUP1 << Instruction::MLOAD << Instruction::SWAP1;
+				m_context << u256(0x20) << Instruction::ADD;
+				m_context << Instruction::RETURN;
+			}
 		}
 		else
 			m_context.appendRevert("Unknown signature and no fallback defined");
@@ -479,6 +490,7 @@ void ContractCompiler::appendFunctionSelector(ContractDefinition const& _contrac
 
 	for (auto const& it: interfaceFunctions)
 	{
+		m_context.setStackOffset(1);
 		FunctionTypePointer const& functionType = it.second;
 		solAssert(functionType->hasDeclaration(), "");
 		CompilerContext::LocationSetter locationSetter(m_context, functionType->declaration());
@@ -588,7 +600,9 @@ bool ContractCompiler::visit(FunctionDefinition const& _function)
 	// reserve additional slots: [retarg0] ... [retargm]
 
 	unsigned parametersSize = CompilerUtils::sizeOnStack(_function.parameters());
-	if (!_function.isConstructor())
+	if (_function.isFallback())
+		m_context.adjustStackOffset(static_cast<int>(parametersSize));
+	else if (!_function.isConstructor())
 		// adding 1 for return address.
 		m_context.adjustStackOffset(static_cast<int>(parametersSize) + 1);
 	for (ASTPointer<VariableDeclaration> const& variable: _function.parameters())
@@ -598,7 +612,7 @@ bool ContractCompiler::visit(FunctionDefinition const& _function)
 	}
 
 	for (ASTPointer<VariableDeclaration> const& variable: _function.returnParameters())
-		appendStackVariableInitialisation(*variable);
+		appendStackVariableInitialisation(*variable, /* _provideDefaultValue = */ true);
 
 	if (_function.isConstructor())
 		if (auto c = dynamic_cast<ContractDefinition const&>(*_function.scope()).nextConstructor(
@@ -628,7 +642,8 @@ bool ContractCompiler::visit(FunctionDefinition const& _function)
 	unsigned const c_returnValuesSize = CompilerUtils::sizeOnStack(_function.returnParameters());
 
 	vector<int> stackLayout;
-	stackLayout.push_back(static_cast<int>(c_returnValuesSize)); // target of return address
+	if (!_function.isConstructor() && !_function.isFallback())
+		stackLayout.push_back(static_cast<int>(c_returnValuesSize)); // target of return address
 	stackLayout += vector<int>(c_argumentsSize, -1); // discard all arguments
 	for (size_t i = 0; i < c_returnValuesSize; ++i)
 		stackLayout.push_back(static_cast<int>(i));
@@ -639,7 +654,7 @@ bool ContractCompiler::visit(FunctionDefinition const& _function)
 			errinfo_sourceLocation(_function.location()) <<
 			errinfo_comment("Stack too deep, try removing local variables.")
 		);
-	while (stackLayout.back() != static_cast<int>(stackLayout.size() - 1))
+	while (!stackLayout.empty() && stackLayout.back() != static_cast<int>(stackLayout.size() - 1))
 		if (stackLayout.back() < 0)
 		{
 			m_context << Instruction::POP;
@@ -745,9 +760,9 @@ bool ContractCompiler::visit(InlineAssembly const& _inlineAssembly)
 				else if (m_context.isStateVariable(decl))
 				{
 					auto const& location = m_context.storageLocationOfVariable(*decl);
-					if (ref->second.isSlot)
+					if (ref->second.suffix == "slot")
 						m_context << location.first;
-					else if (ref->second.isOffset)
+					else if (ref->second.suffix == "offset")
 						m_context << u256(location.second);
 					else
 						solAssert(false, "");
@@ -755,26 +770,44 @@ bool ContractCompiler::visit(InlineAssembly const& _inlineAssembly)
 				else if (m_context.isLocalVariable(decl))
 				{
 					unsigned stackDiff = static_cast<unsigned>(_assembly.stackHeight()) - m_context.baseStackOffsetOfVariable(*variable);
-					if (ref->second.isSlot || ref->second.isOffset)
+					if (!ref->second.suffix.empty())
 					{
-						solAssert(variable->type()->dataStoredIn(DataLocation::Storage), "");
-						unsigned size = variable->type()->sizeOnStack();
-						if (size == 2)
+						string const& suffix = ref->second.suffix;
+						if (variable->type()->dataStoredIn(DataLocation::Storage))
 						{
-							// slot plus offset
-							if (ref->second.isOffset)
+							solAssert(suffix == "offset" || suffix == "slot", "");
+							unsigned size = variable->type()->sizeOnStack();
+							if (size == 2)
+							{
+								// slot plus offset
+								if (suffix == "offset")
+									stackDiff--;
+							}
+							else
+							{
+								solAssert(size == 1, "");
+								// only slot, offset is zero
+								if (suffix == "offset")
+								{
+									_assembly.appendConstant(u256(0));
+									return;
+								}
+							}
+						}
+						else if (variable->type()->dataStoredIn(DataLocation::CallData))
+						{
+							auto const* arrayType = dynamic_cast<ArrayType const*>(variable->type());
+							solAssert(
+								arrayType && arrayType->isDynamicallySized() && arrayType->dataStoredIn(DataLocation::CallData),
+								""
+							);
+							solAssert(suffix == "offset" || suffix == "length", "");
+							solAssert(variable->type()->sizeOnStack() == 2, "");
+							if (suffix == "length")
 								stackDiff--;
 						}
 						else
-						{
-							solAssert(size == 1, "");
-							// only slot, offset is zero
-							if (ref->second.isOffset)
-							{
-								_assembly.appendConstant(u256(0));
-								return;
-							}
-						}
+							solAssert(false, "");
 					}
 					else
 						solAssert(variable->type()->sizeOnStack() == 1, "");
@@ -784,7 +817,6 @@ bool ContractCompiler::visit(InlineAssembly const& _inlineAssembly)
 							errinfo_sourceLocation(_inlineAssembly.location()) <<
 							errinfo_comment("Stack too deep, try removing local variables.")
 						);
-					solAssert(variable->type()->sizeOnStack() == 1, "");
 					_assembly.appendInstruction(dupInstruction(stackDiff));
 				}
 				else
@@ -792,7 +824,7 @@ bool ContractCompiler::visit(InlineAssembly const& _inlineAssembly)
 			}
 			else if (auto contract = dynamic_cast<ContractDefinition const*>(decl))
 			{
-				solAssert(!ref->second.isOffset && !ref->second.isSlot, "");
+				solAssert(ref->second.suffix.empty(), "");
 				solAssert(contract->isLibrary(), "");
 				_assembly.appendLinkerSymbol(contract->fullyQualifiedName());
 			}
@@ -803,20 +835,39 @@ bool ContractCompiler::visit(InlineAssembly const& _inlineAssembly)
 		else
 		{
 			// lvalue context
-			solAssert(!ref->second.isOffset, "");
 			auto variable = dynamic_cast<VariableDeclaration const*>(decl);
-			solAssert(
-				!!variable && m_context.isLocalVariable(variable),
-				"Can only assign to stack variables in inline assembly."
-			);
-			solAssert(variable->type()->sizeOnStack() == 1, "");
 			unsigned stackDiff = static_cast<unsigned>(_assembly.stackHeight()) - m_context.baseStackOffsetOfVariable(*variable) - 1;
-			if (stackDiff > 16 || stackDiff < 1)
-				BOOST_THROW_EXCEPTION(
-					StackTooDeepError() <<
-					errinfo_sourceLocation(_inlineAssembly.location()) <<
-					errinfo_comment("Stack too deep(" + to_string(stackDiff) + "), try removing local variables.")
+			string const& suffix = ref->second.suffix;
+			if (variable->type()->dataStoredIn(DataLocation::Storage))
+			{
+				solAssert(
+					!!variable && m_context.isLocalVariable(variable),
+					"Can only assign to stack variables in inline assembly."
 				);
+				solAssert(variable->type()->sizeOnStack() == 1, "");
+				solAssert(suffix == "slot", "");
+				if (stackDiff > 16 || stackDiff < 1)
+					BOOST_THROW_EXCEPTION(
+						StackTooDeepError() <<
+						errinfo_sourceLocation(_inlineAssembly.location()) <<
+						errinfo_comment("Stack too deep(" + to_string(stackDiff) + "), try removing local variables.")
+					);
+			}
+			else if (variable->type()->dataStoredIn(DataLocation::CallData))
+			{
+				auto const* arrayType = dynamic_cast<ArrayType const*>(variable->type());
+				solAssert(
+					arrayType && arrayType->isDynamicallySized() && arrayType->dataStoredIn(DataLocation::CallData),
+					""
+				);
+				solAssert(suffix == "offset" || suffix == "length", "");
+				solAssert(variable->type()->sizeOnStack() == 2, "");
+				if (suffix == "length")
+					stackDiff--;
+			}
+			else
+				solAssert(suffix.empty(), "");
+
 			_assembly.appendInstruction(swapInstruction(stackDiff));
 			_assembly.appendInstruction(Instruction::POP);
 		}
@@ -1179,7 +1230,7 @@ bool ContractCompiler::visit(VariableDeclarationStatement const& _variableDeclar
 	// and freed in the end of their scope.
 	for (auto decl: _variableDeclarationStatement.declarations())
 		if (decl)
-			appendStackVariableInitialisation(*decl);
+			appendStackVariableInitialisation(*decl, !_variableDeclarationStatement.initialValue());
 
 	StackHeightChecker checker(m_context);
 	if (Expression const* expression = _variableDeclarationStatement.initialValue())
@@ -1325,11 +1376,20 @@ void ContractCompiler::appendModifierOrFunctionCode()
 	m_context.setModifierDepth(m_modifierDepth);
 }
 
-void ContractCompiler::appendStackVariableInitialisation(VariableDeclaration const& _variable)
+void ContractCompiler::appendStackVariableInitialisation(
+	VariableDeclaration const& _variable,
+	bool _provideDefaultValue
+)
 {
 	CompilerContext::LocationSetter location(m_context, _variable);
 	m_context.addVariable(_variable);
-	CompilerUtils(m_context).pushZeroValue(*_variable.annotation().type);
+	if (!_provideDefaultValue && _variable.type()->dataStoredIn(DataLocation::Memory))
+	{
+		solAssert(_variable.type()->sizeOnStack() == 1, "");
+		m_context << u256(0);
+	}
+	else
+		CompilerUtils(m_context).pushZeroValue(*_variable.annotation().type);
 }
 
 void ContractCompiler::compileExpression(Expression const& _expression, TypePointer const& _targetType)

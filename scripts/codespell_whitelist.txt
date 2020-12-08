@@ -13,3 +13,4 @@ keyserver
 hist
 otion
 keypair
+ether

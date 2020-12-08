@@ -1,4 +1,4 @@
-pragma experimental ABIEncoderV2;
+pragma abicoder               v2;
 
 
 contract C {
@@ -8,6 +8,7 @@ contract C {
 }
 // ====
 // compileViaYul: also
+// compileToEwasm: also
 // ----
 // f(int32,uint32): 0xffffff99, 0x00 -> FAILURE
 // f(int32,uint32): 0xffffff99, 0x01 -> FAILURE

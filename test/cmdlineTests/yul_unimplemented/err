@@ -1,5 +1,5 @@
-Error (1834): Unimplemented feature error: Copying from storage to storage is not yet implemented. in <FILENAME REMOVED>
- --> yul_unimplemented/input.sol:7:9:
+Error (1834): Unimplemented feature error in <FILENAME REMOVED>
+ --> yul_unimplemented/input.sol:5:16:
   |
-7 |         a = b;
-  |         ^^^^^
+5 |         return type(test).name;
+  |                ^^^^^^^^^^^^^^^

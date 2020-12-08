@@ -26,8 +26,8 @@
 #include <libsolidity/ast/TypeProvider.h>
 
 #include <libyul/AsmJsonConverter.h>
-#include <libyul/AsmData.h>
 #include <libyul/AsmPrinter.h>
+#include <libyul/AST.h>
 #include <libyul/backends/evm/EVMDialect.h>
 
 #include <libsolutil/JSON.h>
@@ -224,8 +224,10 @@ Json::Value ASTJsonConverter::inlineAssemblyIdentifierToJson(pair<yul::Identifie
 	Json::Value tuple(Json::objectValue);
 	tuple["src"] = sourceLocationToString(_info.first->location);
 	tuple["declaration"] = idOrNull(_info.second.declaration);
-	tuple["isSlot"] = Json::Value(_info.second.isSlot);
-	tuple["isOffset"] = Json::Value(_info.second.isOffset);
+	tuple["isSlot"] = Json::Value(_info.second.suffix == "slot");
+	tuple["isOffset"] = Json::Value(_info.second.suffix == "offset");
+	if (!_info.second.suffix.empty())
+		tuple["suffix"] = Json::Value(_info.second.suffix);
 	tuple["valueSize"] = Json::Value(Json::LargestUInt(_info.second.valueSize));
 	return tuple;
 }

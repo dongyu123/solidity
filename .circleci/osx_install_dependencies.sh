@@ -4,7 +4,7 @@
 #
 # The documentation for solidity is hosted at:
 #
-#     https://solidity.readthedocs.org
+#     https://docs.soliditylang.org
 #
 # ------------------------------------------------------------------------------
 # This file is part of solidity.
@@ -57,7 +57,7 @@ then
   rm -f evmone-0.4.0-darwin-x86_64.tar.gz
 
   # hera
-  wget https://github.com/ewasm/hera/releases/download/v0.3.0/hera-0.3.0-darwin-x86_64.tar.gz
-  tar xzpf hera-0.3.0-darwin-x86_64.tar.gz -C /usr/local
-  rm -f hera-0.3.0-darwin-x86_64.tar.gz
+  wget https://github.com/ewasm/hera/releases/download/v0.3.2/hera-0.3.2-darwin-x86_64.tar.gz
+  tar xzpf hera-0.3.2-darwin-x86_64.tar.gz -C /usr/local
+  rm -f hera-0.3.2-darwin-x86_64.tar.gz
 fi

@@ -74,7 +74,6 @@ public:
 	void endVisit(Return const& _return) override;
 	void endVisit(UnaryOperation const& _unaryOperation) override;
 	bool visit(BinaryOperation const& _binOp) override;
-	bool visit(FunctionCall const& _funCall) override;
 	void endVisit(FunctionCall const& _funCall) override;
 	void endVisit(FunctionCallOptions const& _funCallOptions) override;
 	void endVisit(MemberAccess const& _memberAccess) override;
@@ -183,6 +182,8 @@ private:
 	static Type const& type(Expression const& _expression);
 
 	void setLocation(ASTNode const& _node);
+
+	std::string linkerSymbol(ContractDefinition const& _library) const;
 
 	std::ostringstream m_code;
 	IRGenerationContext& m_context;

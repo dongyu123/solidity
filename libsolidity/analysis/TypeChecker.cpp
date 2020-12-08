@@ -28,7 +28,7 @@
 
 #include <libyul/AsmAnalysis.h>
 #include <libyul/AsmAnalysisInfo.h>
-#include <libyul/AsmData.h>
+#include <libyul/AST.h>
 
 #include <liblangutil/ErrorReporter.h>
 
@@ -758,7 +758,6 @@ bool TypeChecker::visit(InlineAssembly const& _inlineAssembly)
 		InlineAssemblyAnnotation::ExternalIdentifierInfo& identifierInfo = ref->second;
 		Declaration const* declaration = identifierInfo.declaration;
 		solAssert(!!declaration, "");
-		bool requiresStorage = identifierInfo.isSlot || identifierInfo.isOffset;
 		if (auto var = dynamic_cast<VariableDeclaration const*>(declaration))
 		{
 			solAssert(var->type(), "Expected variable type!");
@@ -781,7 +780,7 @@ bool TypeChecker::visit(InlineAssembly const& _inlineAssembly)
 					m_errorReporter.typeError(6252_error, _identifier.location, "Constant variables cannot be assigned to.");
 					return false;
 				}
-				else if (requiresStorage)
+				else if (!identifierInfo.suffix.empty())
 				{
 					m_errorReporter.typeError(6617_error, _identifier.location, "The suffixes .offset and .slot can only be used on non-constant storage variables.");
 					return false;
@@ -807,51 +806,80 @@ bool TypeChecker::visit(InlineAssembly const& _inlineAssembly)
 
 			solAssert(!dynamic_cast<FixedPointType const*>(var->type()), "FixedPointType not implemented.");
 
-			if (requiresStorage)
+			if (!identifierInfo.suffix.empty())
 			{
-				if (!var->isStateVariable() && !var->type()->dataStoredIn(DataLocation::Storage))
+				string const& suffix = identifierInfo.suffix;
+				solAssert((set<string>{"offset", "slot", "length"}).count(suffix), "");
+				if (var->isStateVariable() || var->type()->dataStoredIn(DataLocation::Storage))
 				{
-					m_errorReporter.typeError(3622_error, _identifier.location, "The suffixes .offset and .slot can only be used on storage variables.");
-					return false;
+					if (suffix != "slot" && suffix != "offset")
+					{
+						m_errorReporter.typeError(4656_error, _identifier.location, "State variables only support \".slot\" and \".offset\".");
+						return false;
+					}
+					else if (_context == yul::IdentifierContext::LValue)
+					{
+						if (var->isStateVariable())
+						{
+							m_errorReporter.typeError(4713_error, _identifier.location, "State variables cannot be assigned to - you have to use \"sstore()\".");
+							return false;
+						}
+						else if (suffix != "slot")
+						{
+							m_errorReporter.typeError(9739_error, _identifier.location, "Only .slot can be assigned to.");
+							return false;
+						}
+					}
 				}
-				else if (_context == yul::IdentifierContext::LValue)
+				else if (
+					auto const* arrayType = dynamic_cast<ArrayType const*>(var->type());
+					arrayType && arrayType->isDynamicallySized() && arrayType->dataStoredIn(DataLocation::CallData)
+				)
 				{
-					if (var->isStateVariable())
+					if (suffix != "offset" && suffix != "length")
 					{
-						m_errorReporter.typeError(4713_error, _identifier.location, "State variables cannot be assigned to - you have to use \"sstore()\".");
+						m_errorReporter.typeError(1536_error, _identifier.location, "Calldata variables only support \".offset\" and \".length\".");
 						return false;
 					}
-					else if (identifierInfo.isOffset)
-					{
-						m_errorReporter.typeError(9739_error, _identifier.location, "Only .slot can be assigned to.");
-						return false;
-					}
-					else
-						solAssert(identifierInfo.isSlot, "");
+				}
+				else
+				{
+					m_errorReporter.typeError(3622_error, _identifier.location, "The suffix \"." + suffix + "\" is not supported by this variable or type.");
+					return false;
 				}
 			}
 			else if (!var->isConstant() && var->isStateVariable())
 			{
-				m_errorReporter.typeError(1408_error, _identifier.location, "Only local variables are supported. To access storage variables, use the .slot and .offset suffixes.");
+				m_errorReporter.typeError(
+					1408_error,
+					_identifier.location,
+					"Only local variables are supported. To access storage variables, use the \".slot\" and \".offset\" suffixes."
+				);
 				return false;
 			}
 			else if (var->type()->dataStoredIn(DataLocation::Storage))
 			{
-				m_errorReporter.typeError(9068_error, _identifier.location, "You have to use the .slot or .offset suffix to access storage reference variables.");
+				m_errorReporter.typeError(9068_error, _identifier.location, "You have to use the \".slot\" or \".offset\" suffix to access storage reference variables.");
 				return false;
 			}
 			else if (var->type()->sizeOnStack() != 1)
 			{
-				if (var->type()->dataStoredIn(DataLocation::CallData))
-					m_errorReporter.typeError(2370_error, _identifier.location, "Call data elements cannot be accessed directly. Copy to a local variable first or use \"calldataload\" or \"calldatacopy\" with manually determined offsets and sizes.");
+				if (
+					auto const* arrayType = dynamic_cast<ArrayType const*>(var->type());
+					arrayType && arrayType->isDynamicallySized() && arrayType->dataStoredIn(DataLocation::CallData)
+				)
+					m_errorReporter.typeError(1397_error, _identifier.location, "Call data elements cannot be accessed directly. Use \".offset\" and \".length\" to access the calldata offset and length of this array and then use \"calldatacopy\".");
 				else
+				{
+					solAssert(!var->type()->dataStoredIn(DataLocation::CallData), "");
 					m_errorReporter.typeError(9857_error, _identifier.location, "Only types that use one stack slot are supported.");
+				}
 				return false;
 			}
 		}
-		else if (requiresStorage)
+		else if (!identifierInfo.suffix.empty())
 		{
-			m_errorReporter.typeError(7944_error, _identifier.location, "The suffixes .offset and .slot can only be used on storage variables.");
+			m_errorReporter.typeError(7944_error, _identifier.location, "The suffixes \".offset\", \".slot\" and \".length\" can only be used with variables.");
 			return false;
 		}
 		else if (_context == yul::IdentifierContext::LValue)
@@ -1821,15 +1849,21 @@ void TypeChecker::typeCheckFallbackFunction(FunctionDefinition const& _function)
 		);
 	if (_function.visibility() != Visibility::External)
 		m_errorReporter.typeError(1159_error, _function.location(), "Fallback function must be defined as \"external\".");
-	if (!_function.returnParameters().empty())
+
+	if (!_function.returnParameters().empty() || !_function.parameters().empty())
 	{
-		if (_function.returnParameters().size() > 1 || *type(*_function.returnParameters().front()) != *TypeProvider::bytesMemory())
-			m_errorReporter.typeError(5570_error, _function.returnParameterList()->location(), "Fallback function can only have a single \"bytes memory\" return value.");
-		else
-			m_errorReporter.typeError(6151_error, _function.returnParameterList()->location(), "Return values for fallback functions are not yet implemented.");
+		if (
+			_function.returnParameters().size() != 1 ||
+			*type(*_function.returnParameters().front()) != *TypeProvider::bytesMemory() ||
+			_function.parameters().size() != 1 ||
+			*type(*_function.parameters().front()) != *TypeProvider::bytesCalldata()
+		)
+			m_errorReporter.typeError(
+				5570_error,
+				_function.returnParameterList()->location(),
+				"Fallback function either has to have the signature \"fallback()\" or \"fallback(bytes calldata) returns (bytes memory)\"."
+			);
 	}
-	if (!_function.parameters().empty())
-		m_errorReporter.typeError(3978_error, _function.parameterList().location(), "Fallback function cannot take parameters.");
 }
 
 void TypeChecker::typeCheckReceiveFunction(FunctionDefinition const& _function)
@@ -2287,11 +2321,19 @@ bool TypeChecker::visit(FunctionCall const& _functionCall)
 		functionType = dynamic_cast<FunctionType const*>(expressionType);
 		funcCallAnno.kind = FunctionCallKind::FunctionCall;
 
+		if (auto memberAccess = dynamic_cast<MemberAccess const*>(&_functionCall.expression()))
+		{
+			if (dynamic_cast<FunctionDefinition const*>(memberAccess->annotation().referencedDeclaration))
+				_functionCall.expression().annotation().calledDirectly = true;
+		}
+		else if (auto identifier = dynamic_cast<Identifier const*>(&_functionCall.expression()))
+			if (dynamic_cast<FunctionDefinition const*>(identifier->annotation().referencedDeclaration))
+				_functionCall.expression().annotation().calledDirectly = true;
+
 		// Purity for function calls also depends upon the callee and its FunctionType
 		funcCallAnno.isPure =
 			argumentsArePure &&
 			*_functionCall.expression().annotation().isPure &&
-			functionType &&
 			functionType->isPure();
 
 		if (
@@ -3247,7 +3289,7 @@ void TypeChecker::endVisit(Literal const& _literal)
 				_literal.location(),
 				msg +
 				" If this is not used as an address, please prepend '00'. " +
-				"For more information please see https://solidity.readthedocs.io/en/develop/types.html#address-literals"
+				"For more information please see https://docs.soliditylang.org/en/develop/types.html#address-literals"
 			);
 	}
 

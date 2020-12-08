@@ -120,7 +120,10 @@ void BMC::endVisit(ContractDefinition const& _contract)
 		constructor->accept(*this);
 	else
 	{
+		/// Visiting implicit constructor - we need a dummy callstack frame
+		pushCallStack({nullptr, nullptr});
 		inlineConstructorHierarchy(_contract);
+		popCallStack();
 		/// Check targets created by state variable initialization.
 		smtutil::Expression constraints = m_context.assertions();
 		checkVerificationTargets(constraints);
@@ -146,6 +149,9 @@ bool BMC::visit(FunctionDefinition const& _function)
 		resetStateVariables();
 	}
 
+	if (_function.isConstructor())
+		inlineConstructorHierarchy(dynamic_cast<ContractDefinition const&>(*_function.scope()));
+
 	/// Already visits the children.
 	SMTEncoder::visit(_function);
 
@@ -159,6 +165,7 @@ void BMC::endVisit(FunctionDefinition const& _function)
 		smtutil::Expression constraints = m_context.assertions();
 		checkVerificationTargets(constraints);
 		m_verificationTargets.clear();
+		m_pathConditions.clear();
 	}
 
 	SMTEncoder::endVisit(_function);
@@ -181,7 +188,26 @@ bool BMC::visit(IfStatement const& _node)
 		);
 	m_context.popSolver();
 
-	SMTEncoder::visit(_node);
+	_node.condition().accept(*this);
+	auto conditionExpr = expr(_node.condition());
+	// visit true branch
+	auto [indicesEndTrue, trueEndPathCondition] = visitBranch(&_node.trueStatement(), conditionExpr);
+	auto touchedVars = touchedVariables(_node.trueStatement());
+
+	// visit false branch
+	decltype(indicesEndTrue) indicesEndFalse;
+	auto falseEndPathCondition = currentPathConditions() && !conditionExpr;
+	if (_node.falseStatement())
+	{
+		std::tie(indicesEndFalse, falseEndPathCondition) = visitBranch(_node.falseStatement(), !conditionExpr);
+		touchedVars += touchedVariables(*_node.falseStatement());
+	}
+	else
+		indicesEndFalse = copyVariableIndices();
+
+	// merge the information from branches
+	setPathCondition(trueEndPathCondition || falseEndPathCondition);
+	mergeVariables(touchedVars, expr(_node.condition()), indicesEndTrue, indicesEndFalse);
 
 	return false;
 }
@@ -221,7 +247,7 @@ bool BMC::visit(WhileStatement const& _node)
 	decltype(indicesBeforeLoop) indicesAfterLoop;
 	if (_node.isDoWhile())
 	{
-		indicesAfterLoop = visitBranch(&_node.body());
+		indicesAfterLoop = visitBranch(&_node.body()).first;
 		// TODO the assertions generated in the body should still be active in the condition
 		_node.condition().accept(*this);
 		if (isRootFunction())
@@ -241,7 +267,7 @@ bool BMC::visit(WhileStatement const& _node)
 				&_node.condition()
 			);
 
-		indicesAfterLoop = visitBranch(&_node.body(), expr(_node.condition()));
+		indicesAfterLoop = visitBranch(&_node.body(), expr(_node.condition())).first;
 	}
 
 	// We reset the execution to before the loop
@@ -403,6 +429,12 @@ void BMC::endVisit(FunctionCall const& _funCall)
 	}
 }
 
+void BMC::endVisit(Return const& _return)
+{
+	SMTEncoder::endVisit(_return);
+	setPathCondition(smtutil::Expression(false));
+}
+
 /// Visitor helpers.
 
 void BMC::visitAssert(FunctionCall const& _funCall)
@@ -464,7 +496,9 @@ void BMC::inlineFunctionCall(FunctionCall const& _funCall)
 		// The reason why we need to pushCallStack here instead of visit(FunctionDefinition)
 		// is that there we don't have `_funCall`.
 		pushCallStack({funDef, &_funCall});
+		pushPathCondition(currentPathConditions());
 		funDef->accept(*this);
+		popPathCondition();
 	}
 
 	createReturnedExpressions(_funCall);
@@ -475,6 +509,11 @@ void BMC::internalOrExternalFunctionCall(FunctionCall const& _funCall)
 	auto const& funType = dynamic_cast<FunctionType const&>(*_funCall.expression().annotation().type);
 	if (shouldInlineFunctionCall(_funCall))
 		inlineFunctionCall(_funCall);
+	else if (isPublicGetter(_funCall.expression()))
+	{
+		// Do nothing here.
+		// The processing happens in SMT Encoder, but we need to prevent the resetting of the state variables.
+	}
 	else if (funType.kind() == FunctionType::Kind::Internal)
 		m_errorReporter.warning(
 			5729_error,
@@ -831,32 +870,28 @@ void BMC::checkCondition(
 	{
 	case smtutil::CheckResult::SATISFIABLE:
 	{
+		solAssert(!_callStack.empty(), "");
 		std::ostringstream message;
 		message << "BMC: " << _description << " happens here.";
-		if (_callStack.size())
-		{
-			std::ostringstream modelMessage;
-			modelMessage << "Counterexample:\n";
-			solAssert(values.size() == expressionNames.size(), "");
-			map<string, string> sortedModel;
-			for (size_t i = 0; i < values.size(); ++i)
-				if (expressionsToEvaluate.at(i).name != values.at(i))
-					sortedModel[expressionNames.at(i)] = values.at(i);
+		std::ostringstream modelMessage;
+		modelMessage << "Counterexample:\n";
+		solAssert(values.size() == expressionNames.size(), "");
+		map<string, string> sortedModel;
+		for (size_t i = 0; i < values.size(); ++i)
+			if (expressionsToEvaluate.at(i).name != values.at(i))
+				sortedModel[expressionNames.at(i)] = values.at(i);
 
-			for (auto const& eval: sortedModel)
-				modelMessage << "  " << eval.first << " = " << eval.second << "\n";
+		for (auto const& eval: sortedModel)
+			modelMessage << "  " << eval.first << " = " << eval.second << "\n";
 
-			m_errorReporter.warning(
-				_errorHappens,
-				_location,
-				message.str(),
-				SecondarySourceLocation().append(modelMessage.str(), SourceLocation{})
-				.append(SMTEncoder::callStackMessage(_callStack))
-				.append(move(secondaryLocation))
-			);
-		}
-		else
-			m_errorReporter.warning(6084_error, _location, message.str(), secondaryLocation);
+		m_errorReporter.warning(
+			_errorHappens,
+			_location,
+			message.str(),
+			SecondarySourceLocation().append(modelMessage.str(), SourceLocation{})
+			.append(SMTEncoder::callStackMessage(_callStack))
+			.append(move(secondaryLocation))
+		);
 		break;
 	}
 	case smtutil::CheckResult::UNSATISFIABLE:
@@ -967,5 +1002,16 @@ BMC::checkSatisfiableAndGenerateModel(vector<smtutil::Expression> const& _expres
 smtutil::CheckResult BMC::checkSatisfiable()
 {
 	return checkSatisfiableAndGenerateModel({}).first;
+}
+
+void BMC::assignment(smt::SymbolicVariable& _symVar, smtutil::Expression const& _value)
+{
+	auto oldVar = _symVar.currentValue();
+	auto newVar = _symVar.increaseIndex();
+	m_context.addAssertion(smtutil::Expression::ite(
+		currentPathConditions(),
+		newVar == _value,
+		newVar == oldVar
+	));
 }
 
