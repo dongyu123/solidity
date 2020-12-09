@@ -1,8 +1,10 @@
 ./test/docsCodeStyle.sh
 ./test/cmdlineTests.sh
 ./test/externalTests.sh
+./test/externalTests/ens.sh
 ./test/externalTests/common.sh
 ./test/externalTests/gnosis.sh
+./test/externalTests/gnosis-v2.sh
 ./test/externalTests/zeppelin.sh
 ./test/externalTests/colony.sh
 ./test/externalTests/solc-js/solc-js.sh
