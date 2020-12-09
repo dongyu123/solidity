@@ -147,7 +147,7 @@ bool EmitsChecker::visit(FunctionDefinition const& _node)
 	solAssert(m_currentContract, "FunctionDefinition without ContractDefinition");
 
 	m_currentScope = &_node;
-	m_allFunctions.insert(&_node);
+	m_allFunctions.push_back(&_node);
 
 	// Add base constructor calls
 	if (_node.isConstructor())
