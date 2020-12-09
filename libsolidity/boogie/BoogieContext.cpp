@@ -506,8 +506,6 @@ bg::TypeDeclRef BoogieContext::getStructType(StructDefinition const* structDef, 
 			loc == DataLocation::CallData ? DataLocation::Memory : loc) +
 			"_" + structDef->name() + "#" + util::toString(structDef->id());
 
-	std::cerr << typeName << std::endl;
-
 	if (loc == DataLocation::Storage)
 	{
 		if (m_storStructTypes.find(structDef) == m_storStructTypes.end())
