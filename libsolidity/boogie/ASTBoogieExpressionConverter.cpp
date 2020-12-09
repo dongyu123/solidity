@@ -1354,31 +1354,14 @@ bool ASTBoogieExpressionConverter::visit(MemberAccess const& _node)
 		return false;
 	}
 
-	// Enums
-	if (_node.annotation().type->category() == Type::Category::Enum)
+	// Reaching for enum, e.g. Enum.A
+	if (type->category() == Type::Category::TypeType && _node.annotation().type->category() == Type::Category::Enum)
 	{
-		// Try to get the enum definition
-		EnumDefinition const* enumDef = nullptr;
-		if (auto exprId = dynamic_cast<Identifier const*>(&_node.expression()))
-			enumDef = dynamic_cast<EnumDefinition const*>(exprId->annotation().referencedDeclaration);
-		if (auto exprMemAcc = dynamic_cast<MemberAccess const*>(&_node.expression()))
-			enumDef = dynamic_cast<EnumDefinition const*>(exprMemAcc->annotation().referencedDeclaration);
-
-		if (enumDef)
-		{
-			// TODO: better way to get index?
-			for (size_t i = 0; i < enumDef->members().size(); ++i)
-			{
-				if (enumDef->members()[i]->name() == _node.memberName())
-				{
-					m_currentExpr = m_context.intLit(i, 256);
-					return false;
-				}
-			}
-			solAssert(false, "Enum member not found");
-		}
-		else
-			solAssert(false, "Enum definition not found");
+		// If it's a member of the enum, just return the value
+		EnumType const* enumType = dynamic_cast<EnumType const*>(_node.annotation().type);
+		unsigned i = enumType->memberValue(_node.memberName());
+		m_currentExpr = m_context.intLit(i, 256);
+		return false;
 	}
 
 	// Non-special member access: 'referencedDeclaration' should point to the
