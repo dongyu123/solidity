@@ -136,7 +136,7 @@ void AssignHelper::makeTupleAssign(AssignParam lhs, AssignParam rhs, ASTNode con
 			tmpVars.push_back(nullptr);
 	}
 
-	unsigned i = lhsElems.size();
+	size_t i = lhsElems.size();
 	solAssert(lhsElems.size() > 0, "Expected non-empty tuple");
 	do {
 		i --;

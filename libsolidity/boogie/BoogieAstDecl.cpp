@@ -16,7 +16,7 @@ TypeDeclRef Decl::elementarytype(std::string name)
 {
 	std::string smtname = name;
 	if (name == "int" || name == "bool")
-		smtname[0] = toupper(smtname[0]);
+		smtname[0] = (char) toupper(smtname[0]);
 	if (boost::starts_with(name, "bv"))
 		smtname = "(_ BitVec " + name.substr(2) + ")";
 	return std::make_shared<TypeDecl>(name, "", std::vector<AttrRef>(), smtname);

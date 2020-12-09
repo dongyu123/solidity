@@ -59,7 +59,7 @@ public:
 	typedef DeclarationList::iterator iterator;
 	iterator begin() { return decls.begin(); }
 	iterator end() { return decls.end(); }
-	unsigned size() { return decls.size(); }
+	size_t size() { return decls.size(); }
 	bool empty() { return decls.empty(); }
 	DeclarationList& getDeclarations() { return decls; }
 };
