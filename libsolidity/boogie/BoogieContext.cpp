@@ -723,7 +723,6 @@ bg::TypeDeclRef BoogieContext::toBoogieType(TypePointer tp, ASTNode const* _asso
 					ASTBoogieUtils::dataLocToStr(arrType->location()) + ") for array type");
 			return errType();
 		}
-		break;
 	}
 	case Type::Category::Mapping:
 	{

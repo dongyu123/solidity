@@ -1339,19 +1339,27 @@ string YulUtilFunctions::storageArrayPushZeroFunction(ArrayType const& _type)
 {
 	solAssert(_type.location() == DataLocation::Storage, "");
 	solAssert(_type.isDynamicallySized(), "");
-	solUnimplementedAssert(!_type.isByteArray(), "Byte Arrays not yet implemented!");
 	solUnimplementedAssert(_type.baseType()->storageBytes() <= 32, "Base type is not yet implemented.");
 
 	string functionName = "array_push_zero_" + _type.identifier();
 	return m_functionCollector.createFunction(functionName, [&]() {
 		return Whiskers(R"(
 			function <functionName>(array) -> slot, offset {
-				let oldLen := <fetchLength>(array)
-				if iszero(lt(oldLen, <maxArrayLength>)) { <panic>() }
-				sstore(array, add(oldLen, 1))
+				<?isBytes>
+					let data := sload(array)
+					let oldLen := <extractLength>(data)
+					<increaseBytesSize>(array, data, oldLen, add(oldLen, 1))
+				<!isBytes>
+					let oldLen := <fetchLength>(array)
+					if iszero(lt(oldLen, <maxArrayLength>)) { <panic>() }
+					sstore(array, add(oldLen, 1))
+				</isBytes>
 				slot, offset := <indexAccess>(array, oldLen)
 			})")
 			("functionName", functionName)
+			("isBytes", _type.isByteArray())
+			("increaseBytesSize", _type.isByteArray() ? increaseByteArraySizeFunction(_type) : "")
+			("extractLength", _type.isByteArray() ? extractByteArrayLengthFunction() : "")
 			("panic", panicFunction())
 			("fetchLength", arrayLengthFunction(_type))
 			("indexAccess", storageArrayIndexAccessFunction(_type))
@@ -1625,8 +1633,9 @@ string YulUtilFunctions::copyByteArrayToStorageFunction(ArrayType const& _fromTy
 
 				let oldLen := <byteArrayLength>(sload(slot))
 
+				let srcOffset := 0
 				<?fromMemory>
-					src := add(src, 0x20)
+					srcOffset := 0x20
 				</fromMemory>
 
 				// This is not needed in all branches.
@@ -1644,14 +1653,16 @@ string YulUtilFunctions::copyByteArrayToStorageFunction(ArrayType const& _fromTy
 				switch gt(newLen, 31)
 				case 1 {
 					let loopEnd := and(newLen, not(0x1f))
+					<?fromStorage> src := <srcDataLocation>(src) </fromStorage>
 					let dstPtr := dstDataArea
 					let i := 0
-					for { } lt(i, loopEnd) { i := add(i, 32) } {
-						sstore(dstPtr, <read>(add(src, i)))
+					for { } lt(i, loopEnd) { i := add(i, 0x20) } {
+						sstore(dstPtr, <read>(add(src, srcOffset)))
 						dstPtr := add(dstPtr, 1)
+						srcOffset := add(srcOffset, <srcIncrement>)
 					}
 					if lt(loopEnd, newLen) {
-						let lastValue := <read>(add(src, i))
+						let lastValue := <read>(add(src, srcOffset))
 						sstore(dstPtr, <maskBytes>(lastValue, and(newLen, 0x1f)))
 					}
 					sstore(slot, add(mul(newLen, 2), 1))
@@ -1659,7 +1670,7 @@ string YulUtilFunctions::copyByteArrayToStorageFunction(ArrayType const& _fromTy
 				default {
 					let value := 0
 					if newLen {
-						value := <read>(src)
+						value := <read>(add(src, srcOffset))
 					}
 					sstore(slot, <byteArrayCombineShort>(value, newLen))
 				}
@@ -1675,7 +1686,10 @@ string YulUtilFunctions::copyByteArrayToStorageFunction(ArrayType const& _fromTy
 		templ("panic", panicFunction());
 		templ("byteArrayLength", extractByteArrayLengthFunction());
 		templ("dstDataLocation", arrayDataAreaFunction(_toType));
+		if (fromStorage)
+			templ("srcDataLocation", arrayDataAreaFunction(_fromType));
 		templ("clearStorageRange", clearStorageRangeFunction(*_toType.baseType()));
+		templ("srcIncrement", to_string(fromStorage ? 1 : 0x20));
 		templ("read", fromStorage ? "sload" : fromCalldata ? "calldataload" : "mload");
 		templ("maskBytes", maskBytesFunctionDynamic());
 		templ("byteArrayCombineShort", shortByteArrayEncodeUsedAreaSetLengthFunction());
@@ -2834,18 +2848,20 @@ string YulUtilFunctions::conversionFunction(Type const& _from, Type const& _to)
 	}
 	else if (_from.category() == Type::Category::ArraySlice)
 	{
-		solAssert(_from.isDynamicallySized(), "");
-		solAssert(_from.dataStoredIn(DataLocation::CallData), "");
 		solAssert(_to.category() == Type::Category::Array, "");
+		auto const& fromType = dynamic_cast<ArraySliceType const&>(_from);
+		auto const& targetType = dynamic_cast<ArrayType const&>(_to);
 
-		ArraySliceType const& fromType = dynamic_cast<ArraySliceType const&>(_from);
-		ArrayType const& targetType = dynamic_cast<ArrayType const&>(_to);
-
-		solAssert(!fromType.arrayType().baseType()->isDynamicallyEncoded(), "");
+		solAssert(fromType.arrayType().isImplicitlyConvertibleTo(targetType), "");
 		solAssert(
-			*fromType.arrayType().baseType() == *targetType.baseType(),
-			"Converting arrays of different type is not possible"
+			fromType.arrayType().dataStoredIn(DataLocation::CallData) &&
+			fromType.arrayType().isDynamicallySized() &&
+			!fromType.arrayType().baseType()->isDynamicallyEncoded(),
+			""
 		);
+
+		if (!targetType.dataStoredIn(DataLocation::CallData))
+			return arrayConversionFunction(fromType.arrayType(), targetType);
 
 		string const functionName =
 			"convert_" +

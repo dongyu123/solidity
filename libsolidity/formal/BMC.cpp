@@ -23,6 +23,10 @@
 
 #include <libsmtutil/SMTPortfolio.h>
 
+#ifdef HAVE_Z3_DLOPEN
+#include <z3_version.h>
+#endif
+
 using namespace std;
 using namespace solidity;
 using namespace solidity::util;
@@ -83,7 +87,10 @@ void BMC::analyze(SourceUnit const& _source, map<ASTNode const*, set<Verificatio
 			m_outerErrorReporter.warning(
 				8084_error,
 				SourceLocation(),
-				"BMC analysis was not possible since no integrated SMT solver (Z3 or CVC4) was found."
+				"BMC analysis was not possible since no SMT solver (Z3 or CVC4) was found."
+#ifdef HAVE_Z3_DLOPEN
+				" Install libz3.so." + to_string(Z3_MAJOR_VERSION) + "." + to_string(Z3_MINOR_VERSION) + " to enable Z3."
+#endif
 			);
 		}
 	}
@@ -349,27 +356,12 @@ void BMC::endVisit(UnaryOperation const& _op)
 	)
 		return;
 
-	switch (_op.getOperator())
-	{
-	case Token::Inc: // ++ (pre- or postfix)
-	case Token::Dec: // -- (pre- or postfix)
+	if (_op.getOperator() == Token::Sub && smt::isInteger(*_op.annotation().type))
 		addVerificationTarget(
 			VerificationTarget::Type::UnderOverflow,
 			expr(_op),
 			&_op
 		);
-		break;
-	case Token::Sub: // -
-		if (_op.annotation().type->category() == Type::Category::Integer)
-			addVerificationTarget(
-				VerificationTarget::Type::UnderOverflow,
-				expr(_op),
-				&_op
-			);
-		break;
-	default:
-		break;
-	}
 }
 
 void BMC::endVisit(FunctionCall const& _funCall)

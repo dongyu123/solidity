@@ -79,17 +79,11 @@
                         						
                         <entry excluding="liblll|libsolidity|libevmasm|libdevcore|libjulia|lllc|libsolc|solc" flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name=""/>
                         						
-                        <entry flags="VALUE_WORKSPACE_PATH" kind="sourcePath" name="libdevcore"/>
-                        						
                         <entry flags="VALUE_WORKSPACE_PATH" kind="sourcePath" name="libevmasm"/>
-                        						
-                        <entry flags="VALUE_WORKSPACE_PATH" kind="sourcePath" name="liblll"/>
                         						
                         <entry flags="VALUE_WORKSPACE_PATH" kind="sourcePath" name="libsolc"/>
                         						
                         <entry flags="VALUE_WORKSPACE_PATH" kind="sourcePath" name="libsolidity"/>
-                        						
-                        <entry flags="VALUE_WORKSPACE_PATH" kind="sourcePath" name="lllc"/>
                         						
                         <entry flags="VALUE_WORKSPACE_PATH" kind="sourcePath" name="solc"/>
                         					

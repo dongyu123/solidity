@@ -7,7 +7,7 @@ contract A {
 		A.y = A.x++;
 		assert(A.y == A.x - 1);
 		// Fails
-		assert(A.y == 0);
+		// assert(A.y == 0); // Disabled because of nondeterminism in Spacer
 		A.y = ++A.x;
 		assert(A.y == A.x);
 		delete A.x;
@@ -25,6 +25,7 @@ contract A {
 		assert(A.y == A.x);
 	}
 }
+// ====
+// SMTIgnoreCex: yes
 // ----
-// Warning 6328: (160-176): CHC: Assertion violation happens here.
-// Warning 6328: (373-389): CHC: Assertion violation happens here.
+// Warning 6328: (424-440): CHC: Assertion violation happens here.

@@ -3,25 +3,32 @@
 Language Features:
  * Code generator: Support copying dynamically encoded structs from calldata to memory.
  * Code generator: Support copying of nested arrays from calldata to memory.
+ * Code generator: Support conversion from calldata slices to memory and storage arrays.
  * The fallback function can now also have a single ``calldata`` argument (equaling ``msg.data``) and return ``bytes memory`` (which will not be ABI-encoded but returned as-is).
  * Wasm backend: Add ``i32.select`` and ``i64.select`` instructions.
 
 Compiler Features:
+ * Build System: Optionally support dynamic loading of Z3 and use that mechanism for Linux release builds.
  * Code Generator: Avoid memory allocation for default value if it is not used.
  * SMTChecker: Report struct values in counterexamples from CHC engine.
  * SMTChecker: Support early returns in the CHC engine.
  * SMTChecker: Support getters.
  * SMTChecker: Support named arguments in function calls.
  * SMTChecker: Support struct constructor.
+ * SMTChecker: Create underflow and overflow verification targets for increment/decrement in the CHC engine.
+ * Standard-Json: Move the recently introduced ``modelCheckerSettings`` key to ``settings.modelChecker``.
  * Standard-Json: Properly filter the requested output artifacts.
 
 Bugfixes:
  * Code generator: Do not pad empty string literals with a single 32-byte zero field in the ABI coder v1.
+ * NatSpec: Fix segfault when inheriting return parameter documentation for modifiers with no parameters.
  * SMTChecker: Fix cast string literals to byte arrays.
  * SMTChecker: Fix internal compiler error when doing bitwise compound assignment with string literals.
  * SMTChecker: Fix internal error when trying to generate counterexamples with old z3.
  * SMTChecker: Fix segmentation fault that could occur on certain SMT-enabled sources when no SMT solver was available.
+ * SMTChecker: Fix internal error when ``bytes.push()`` is used as the LHS of an assignment.
  * Type Checker: ``super`` is not available in libraries.
+ * Type Checker: Disallow leading zeroes in sized-types (e.g. ``bytes000032``), but allow them to be treated as identifiers.
  * Yul Optimizer: Fix a bug in NameSimplifier where a new name created by NameSimplifier could also be created by NameDispenser.
  * Yul Optimizer: Removed NameSimplifier from optimization steps available to users.
 

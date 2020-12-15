@@ -2074,9 +2074,13 @@ std::unique_ptr<ReferenceType> ArrayType::copyForLocation(DataLocation _location
 
 BoolResult ArraySliceType::isImplicitlyConvertibleTo(Type const& _other) const
 {
-	if (m_arrayType.location() == DataLocation::CallData && m_arrayType.isDynamicallySized() && m_arrayType == _other)
-		return true;
-	return (*this) == _other;
+	return
+		(*this) == _other ||
+		(
+			m_arrayType.dataStoredIn(DataLocation::CallData) &&
+			m_arrayType.isDynamicallySized() &&
+			m_arrayType.isImplicitlyConvertibleTo(_other)
+		);
 }
 
 string ArraySliceType::richIdentifier() const
@@ -3110,6 +3114,13 @@ BoolResult FunctionType::isImplicitlyConvertibleTo(Type const& _convertTo) const
 		return false;
 
 	FunctionType const& convertTo = dynamic_cast<FunctionType const&>(_convertTo);
+
+	// These two checks are duplicated in equalExcludingStateMutability, but are added here for error reporting.
+	if (convertTo.bound() != bound())
+		return BoolResult::err("Bound functions can not be converted to non-bound functions.");
+
+	if (convertTo.kind() != kind())
+		return BoolResult::err("Special functions can not be converted to function types.");
 
 	if (!equalExcludingStateMutability(convertTo))
 		return false;

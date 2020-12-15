@@ -20,6 +20,11 @@ if(SOLC_LINK_STATIC AND UNIX AND NOT APPLE)
 		LINK_SEARCH_START_STATIC ON
 		LINK_SEARCH_END_STATIC ON
 	)
+elseif(SOLC_STATIC_STDLIBS AND UNIX AND NOT APPLE)
+	set_target_properties(
+		solc PROPERTIES
+		LINK_FLAGS "-static-libgcc -static-libstdc++"
+	)
 endif()
 
 # Solc-verify
