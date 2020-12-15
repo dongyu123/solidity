@@ -68,7 +68,7 @@ def betterResult(status1, status2):
         return True
     if status2 == 'OK':
         return False
-    if statis2 == 'ERROR':
+    if status2 == 'ERROR':
         return False
     if status1 == 'INCONCLUSIVE':
         return True
