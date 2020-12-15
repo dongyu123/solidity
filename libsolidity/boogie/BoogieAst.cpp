@@ -39,6 +39,26 @@ Attr::Ref Attr::attr(std::string s, std::string v, int i, int j)
 	return attr(s, {Expr::stringlit(v), Expr::intlit((long) i), Expr::intlit((long) j)});
 }
 
+std::ostream& operator<<(std::ostream& os, Attr::Ref a)
+{
+	a->print(os);
+	return os;
+}
+
+std::ostream& operator<<(std::ostream& os, Program const* p)
+{
+	if (p == 0)
+		os << "<null> Program!\n";
+	else
+		p->print(os);
+	return os;
+}
+std::ostream& operator<<(std::ostream& os, Program const& p)
+{
+	p.print(os);
+	return os;
+}
+
 void Attr::print(std::ostream& os) const
 {
 	os << "{:" << name;

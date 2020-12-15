@@ -106,4 +106,8 @@ void print_set(std::ostream& os, std::set<T,C> const& ts)
 	print_set<T,C>(os, ts, "", "", "");
 }
 
+std::ostream& operator<<(std::ostream& os, Attr::Ref a);
+std::ostream& operator<<(std::ostream& os, Program const* p);
+std::ostream& operator<<(std::ostream& os, Program const& p);
+
 }
