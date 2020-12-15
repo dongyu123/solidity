@@ -157,7 +157,7 @@ def verifyProcedure(arguments):
     timer = threading.Timer(args.timeout, kill)
     # Run verification, get result
     timer.start()
-    boogieArgs = '/proc:%s /nologo /doModSetAnalysis /errorTrace:0 /useArrayTheory /trace /infer:j' % procedureId
+    boogieArgs = '/proc:%s /doModSetAnalysis /errorTrace:0 /useArrayTheory /trace /infer:j' % procedureId
     if args.smt_log:
         boogieArgs += ' /proverLog:%s.%s.%s.smt2' % (args.smt_log, procedureId, solver)
 
