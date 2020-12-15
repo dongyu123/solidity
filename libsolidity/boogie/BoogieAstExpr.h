@@ -462,5 +462,6 @@ public:
 
 std::ostream& operator<<(std::ostream& os, Expr const& e);
 std::ostream& operator<<(std::ostream& os, Expr::Ref e);
+std::ostream& operator<<(std::ostream& os, Binding const& p);
 
 }
