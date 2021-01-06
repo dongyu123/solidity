@@ -22,12 +22,12 @@
 #include <libyul/AsmAnalysis.h>
 
 #include <libyul/AST.h>
-#include <libyul/AsmScopeFiller.h>
-#include <libyul/AsmScope.h>
 #include <libyul/AsmAnalysisInfo.h>
 #include <libyul/Utilities.h>
 #include <libyul/Exceptions.h>
 #include <libyul/Object.h>
+#include <libyul/Scope.h>
+#include <libyul/ScopeFiller.h>
 
 #include <liblangutil/ErrorReporter.h>
 
@@ -574,6 +574,12 @@ void AsmAnalyzer::expectValidIdentifier(YulString _identifier, SourceLocation co
 			"\"" + _identifier.str() + "\" is not a valid identifier (contains consecutive dots)."
 		);
 
+	if (m_dialect.reservedIdentifier(_identifier))
+		m_errorReporter.declarationError(
+			5017_error,
+			_location,
+			"The identifier \"" + _identifier.str() + "\" is reserved and can not be used."
+		);
 }
 
 void AsmAnalyzer::expectValidType(YulString _type, SourceLocation const& _location)

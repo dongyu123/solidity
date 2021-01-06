@@ -8,6 +8,7 @@ contract C {
         r += 1;
     }
 }
-
+// ====
+// compileViaYul: false
 // ----
 // f() -> 10

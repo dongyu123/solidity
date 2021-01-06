@@ -874,7 +874,7 @@ void ASTBoogieConverter::processFuncModifiersAndBody()
 	if (m_currentModifier < m_currentFunc->modifiers().size()) // We still have modifiers
 	{
 		auto modifier = m_currentFunc->modifiers()[m_currentModifier];
-		auto modifierDecl = dynamic_cast<ModifierDefinition const*>(modifier->name()->annotation().referencedDeclaration);
+		auto modifierDecl = dynamic_cast<ModifierDefinition const*>(modifier->name().annotation().referencedDeclaration);
 
 		if (modifierDecl)
 		{
@@ -905,7 +905,7 @@ void ASTBoogieConverter::processFuncModifiersAndBody()
 			m_context.popExtraScope();
 		}
 		// Base constructor arguments can skipped, calls to base constructors are inlined
-		else if (dynamic_cast<ContractDefinition const*>(modifier->name()->annotation().referencedDeclaration))
+		else if (dynamic_cast<ContractDefinition const*>(modifier->name().annotation().referencedDeclaration))
 		{
 			m_currentModifier++;
 			processFuncModifiersAndBody();
@@ -1030,7 +1030,7 @@ bool ASTBoogieConverter::visit(InheritanceSpecifier const& _node)
 {
 	rememberScope(_node);
 	// Boogie programs are flat, inheritance does not appear explicitly
-	m_context.addGlobalComment("Inherits from: " + boost::algorithm::join(_node.name().namePath(), "#"));
+	m_context.addGlobalComment("Inherits from: " + boost::algorithm::join(_node.name().path(), "#"));
 	return false;
 }
 
@@ -1039,7 +1039,7 @@ bool ASTBoogieConverter::visit(UsingForDirective const& _node)
 	rememberScope(_node);
 
 	// Nothing to do with using for directives, calls to functions are resolved in the AST
-	string libraryName = _node.libraryName().annotation().type->toString();
+	string libraryName = boost::algorithm::join(_node.libraryName().path(), ".");
 	string typeName = _node.typeName() ? _node.typeName()->annotation().type->toString() : "*";
 	m_context.addGlobalComment("Using " + libraryName + " for " + typeName);
 	return false;

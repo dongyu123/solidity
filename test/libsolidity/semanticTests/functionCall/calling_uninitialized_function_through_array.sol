@@ -19,4 +19,4 @@ contract C {
 // compileViaYul: also
 // compileToEwasm: also
 // ----
-// t() -> FAILURE
+// t() -> FAILURE, hex"4e487b71", 0x51

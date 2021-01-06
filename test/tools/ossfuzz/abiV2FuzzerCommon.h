@@ -6,9 +6,6 @@
 
 #include <libyul/AssemblyStack.h>
 
-#include <liblangutil/Exceptions.h>
-#include <liblangutil/SourceReferenceFormatter.h>
-
 #include <libsolutil/Keccak256.h>
 
 #include <evmone/evmone.h>

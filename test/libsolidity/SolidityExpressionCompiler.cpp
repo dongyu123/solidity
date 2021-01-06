@@ -145,6 +145,7 @@ bytes compileFirstExpression(
 			);
 			context.resetVisitedNodes(contract);
 			context.setMostDerivedContract(*contract);
+			context.setArithmetic(Arithmetic::Wrapping);
 			size_t parametersSize = _localVariables.size(); // assume they are all one slot on the stack
 			context.adjustStackOffset(static_cast<int>(parametersSize));
 			for (vector<string> const& variable: _localVariables)
@@ -330,14 +331,28 @@ BOOST_AUTO_TEST_CASE(arithmetic)
 {
 	char const* sourceCode = R"(
 		contract test {
-			function f(uint y) public { ((((((((y ^ 8) & 7) | 6) - 5) + 4) % 3) / 2) * 1); }
+			function f(uint y) public { unchecked { ((((((((y ^ 8) & 7) | 6) - 5) + 4) % 3) / 2) * 1); } }
 		}
 	)";
 	bytes code = compileFirstExpression(sourceCode, {}, {{"test", "f", "y"}});
 
+	bytes panic =
+		bytes{uint8_t(Instruction::PUSH32)} +
+		fromHex("4E487B7100000000000000000000000000000000000000000000000000000000") +
+		bytes{
+			uint8_t(Instruction::PUSH1), 0x0,
+			uint8_t(Instruction::MSTORE),
+			uint8_t(Instruction::PUSH1), 0x12,
+			uint8_t(Instruction::PUSH1), 0x4,
+			uint8_t(Instruction::MSTORE),
+			uint8_t(Instruction::PUSH1), 0x24,
+			uint8_t(Instruction::PUSH1), 0x0,
+			uint8_t(Instruction::REVERT)
+		};
+
 	bytes expectation;
 	if (solidity::test::CommonOptions::get().optimize)
-		expectation = {
+		expectation = bytes{
 			uint8_t(Instruction::PUSH1), 0x2,
 			uint8_t(Instruction::PUSH1), 0x3,
 			uint8_t(Instruction::PUSH1), 0x5,
@@ -354,24 +369,24 @@ BOOST_AUTO_TEST_CASE(arithmetic)
 			uint8_t(Instruction::DUP2),
 			uint8_t(Instruction::ISZERO),
 			uint8_t(Instruction::ISZERO),
-			uint8_t(Instruction::PUSH1), 0x1b,
-			uint8_t(Instruction::JUMPI),
-			uint8_t(Instruction::INVALID),
+			uint8_t(Instruction::PUSH1), 0x48,
+			uint8_t(Instruction::JUMPI)
+		} + panic + bytes{
 			uint8_t(Instruction::JUMPDEST),
 			uint8_t(Instruction::MOD),
 			uint8_t(Instruction::DUP2),
 			uint8_t(Instruction::ISZERO),
 			uint8_t(Instruction::ISZERO),
-			uint8_t(Instruction::PUSH1), 0x24,
-			uint8_t(Instruction::JUMPI),
-			uint8_t(Instruction::INVALID),
+			uint8_t(Instruction::PUSH1), 0x7e,
+			uint8_t(Instruction::JUMPI)
+		} + panic + bytes{
 			uint8_t(Instruction::JUMPDEST),
 			uint8_t(Instruction::DIV),
 			uint8_t(Instruction::PUSH1), 0x1,
 			uint8_t(Instruction::MUL)
 		};
 	else
-		expectation = {
+		expectation = bytes{
 			uint8_t(Instruction::PUSH1), 0x1,
 			uint8_t(Instruction::PUSH1), 0x2,
 			uint8_t(Instruction::PUSH1), 0x3,
@@ -389,21 +404,22 @@ BOOST_AUTO_TEST_CASE(arithmetic)
 			uint8_t(Instruction::DUP2),
 			uint8_t(Instruction::ISZERO),
 			uint8_t(Instruction::ISZERO),
-			uint8_t(Instruction::PUSH1), 0x1d,
-			uint8_t(Instruction::JUMPI),
-			uint8_t(Instruction::INVALID),
+			uint8_t(Instruction::PUSH1), 0x4a,
+			uint8_t(Instruction::JUMPI)
+		} + panic + bytes{
 			uint8_t(Instruction::JUMPDEST),
 			uint8_t(Instruction::MOD),
 			uint8_t(Instruction::DUP2),
 			uint8_t(Instruction::ISZERO),
 			uint8_t(Instruction::ISZERO),
-			uint8_t(Instruction::PUSH1), 0x26,
-			uint8_t(Instruction::JUMPI),
-			uint8_t(Instruction::INVALID),
+			uint8_t(Instruction::PUSH1), 0x80,
+			uint8_t(Instruction::JUMPI)
+		} + panic + bytes{
 			uint8_t(Instruction::JUMPDEST),
 			uint8_t(Instruction::DIV),
 			uint8_t(Instruction::MUL)
 		};
+
 	BOOST_CHECK_EQUAL_COLLECTIONS(code.begin(), code.end(), expectation.begin(), expectation.end());
 }
 
@@ -411,7 +427,7 @@ BOOST_AUTO_TEST_CASE(unary_operators)
 {
 	char const* sourceCode = R"(
 		contract test {
-			function f(int y) public { !(~- y == 2); }
+			function f(int y) public { unchecked { !(~- y == 2); } }
 		}
 	)";
 	bytes code = compileFirstExpression(sourceCode, {}, {{"test", "f", "y"}});
@@ -444,7 +460,7 @@ BOOST_AUTO_TEST_CASE(unary_inc_dec)
 {
 	char const* sourceCode = R"(
 		contract test {
-			function f(uint a) public returns (uint x) { x = --a ^ (a-- ^ (++a ^ a++)); }
+			function f(uint a) public returns (uint x) { unchecked { x = --a ^ (a-- ^ (++a ^ a++)); } }
 		}
 	)";
 	bytes code = compileFirstExpression(sourceCode, {}, {{"test", "f", "a"}, {"test", "f", "x"}});
@@ -501,7 +517,7 @@ BOOST_AUTO_TEST_CASE(assignment)
 {
 	char const* sourceCode = R"(
 		contract test {
-			function f(uint a, uint b) public { (a += b) * 2; }
+			function f(uint a, uint b) public { unchecked { (a += b) * 2; } }
 		}
 	)";
 	bytes code = compileFirstExpression(sourceCode, {}, {{"test", "f", "a"}, {"test", "f", "b"}});

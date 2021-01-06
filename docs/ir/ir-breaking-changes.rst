@@ -34,6 +34,27 @@ Consequently, if the padding space within a struct is used to store data (e.g. i
 
 We have the same behavior for implicit delete, for example when array of structs is shortened.
 
+ * Function modifiers are implemented in a slightly different way regarding function parameters.
+   This especially has an effect if the placeholder ``_;`` is evaluated multiple times in a modifier.
+   In the old code generator, each function parameter has a fixed slot on the stack. If the function
+   is run multiple times because ``_;`` is used multiple times or used in a loop, then a change to the
+   function parameter's value is visible in the next execution of the function.
+   The new code generator implements modifiers using actual functions and passes function parameters on.
+   This means that multiple executions of a function will get the same values for the parameters.
+
+::
+    // SPDX-License-Identifier: GPL-3.0
+    pragma solidity >=0.7.0;
+    contract C {
+        function f(uint a) public pure mod() returns (uint r) {
+            r = a++;
+        }
+        modifier mod() { _; _; }
+    }
+
+If you execute ``f(0)`` in the old code generator, it will return ``2``, while
+it will return ``1`` when using the new code generator.
+
  * The order of contract initialization has changed in case of inheritance.
 
 The order used to be:
@@ -69,3 +90,27 @@ This causes differences in some contracts, for example:
 
 Previously, ``y`` would be set to 0. This is due to the fact that we would first initialize state variables: First, ``x`` is set to 0, and when initializing ``y``, ``f()`` would return 0 causing ``y`` to be 0 as well.
 With the new rules, ``y`` will be set to 42. We first initialize ``x`` to 0, then call A's constructor which sets ``x`` to 42. Finally, when initializing ``y``, ``f()`` returns 42 causing ``y`` to be 42.
+
+ * Copying `bytes` arrays from memory to storage is implemented in a different way. The old code generator always copies full words, while the new one cuts the byte array after its end. The old behaviour can lead to dirty data being copied after the end of the array (but still in the same storage slot).
+This causes differences in some contracts, for example:
+::
+     // SPDX-License-Identifier: GPL-3.0
+     pragma solidity >0.8.0;
+
+     contract C {
+         bytes x;
+         function f() public returns (uint r) {
+             bytes memory m = "tmp";
+             assembly {
+                 mstore(m, 8)
+                 mstore(add(m, 32), "deadbeef15dead")
+             }
+             x = m;
+             assembly {
+                 r := sload(x.slot)
+             }
+         }
+     }
+
+Previously `f()` would return `0x6465616462656566313564656164000000000000000000000000000000000010` (it has correct length, and correct first 8 elements, but than it contains dirty data which was set via assembly).
+Now it is returning `0x6465616462656566000000000000000000000000000000000000000000000010` (it has correct length, and correct elements, but doesn't contain dirty data).

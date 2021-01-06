@@ -244,16 +244,13 @@ TypePointers TypeChecker::typeCheckMetaTypeFunctionAndRetrieveReturnType(Functio
 {
 	vector<ASTPointer<Expression const>> arguments = _functionCall.arguments();
 	if (arguments.size() != 1)
-	{
-		m_errorReporter.typeError(
+		m_errorReporter.fatalTypeError(
 			8885_error,
 			_functionCall.location(),
 			"This function takes one argument, but " +
 			toString(arguments.size()) +
 			" were provided."
 		);
-		return {};
-	}
 	TypePointer firstArgType = type(*arguments.front());
 
 	bool wrongType = false;
@@ -261,26 +258,22 @@ TypePointers TypeChecker::typeCheckMetaTypeFunctionAndRetrieveReturnType(Functio
 	{
 		TypeType const* typeTypePtr = dynamic_cast<TypeType const*>(firstArgType);
 		Type::Category typeCategory = typeTypePtr->actualType()->category();
-		if (
-			typeCategory != Type::Category::Contract &&
-			typeCategory != Type::Category::Integer
-		)
+		if (auto const* contractType = dynamic_cast<ContractType const*>(typeTypePtr->actualType()))
+			wrongType = contractType->isSuper();
+		else if (typeCategory != Type::Category::Integer)
 			wrongType = true;
 	}
 	else
 		wrongType = true;
 
 	if (wrongType)
-	{
-		m_errorReporter.typeError(
+		m_errorReporter.fatalTypeError(
 			4259_error,
 			arguments.front()->location(),
 			"Invalid type for argument in the function call. "
 			"A contract type or an integer type is required, but " +
 			type(*arguments.front())->toString(true) + " provided."
 		);
-		return {};
-	}
 
 	return {TypeProvider::meta(dynamic_cast<TypeType const&>(*firstArgType).actualType())};
 }
@@ -365,6 +358,9 @@ bool TypeChecker::visit(FunctionDefinition const& _function)
 	}
 	if (_function.overrides() && _function.isFree())
 		m_errorReporter.syntaxError(1750_error, _function.location(), "Free functions cannot override.");
+
+	if (!_function.modifiers().empty() && _function.isFree())
+		m_errorReporter.syntaxError(5811_error, _function.location(), "Free functions cannot have modifiers.");
 
 	if (_function.isPayable())
 	{
@@ -458,7 +454,7 @@ bool TypeChecker::visit(FunctionDefinition const& _function)
 			*modifier,
 			_function.isConstructor() ? baseContracts : vector<ContractDefinition const*>()
 		);
-		Declaration const* decl = &dereference(*modifier->name());
+		Declaration const* decl = &dereference(modifier->name());
 		if (modifiers.count(decl))
 		{
 			if (dynamic_cast<ContractDefinition const*>(decl))
@@ -639,13 +635,25 @@ void TypeChecker::visitManually(
 	for (ASTPointer<Expression> const& argument: arguments)
 		argument->accept(*this);
 
-	_modifier.name()->accept(*this);
+	_modifier.name().accept(*this);
 
-	auto const* declaration = &dereference(*_modifier.name());
+	auto const* declaration = &dereference(_modifier.name());
 	vector<ASTPointer<VariableDeclaration>> emptyParameterList;
 	vector<ASTPointer<VariableDeclaration>> const* parameters = nullptr;
 	if (auto modifierDecl = dynamic_cast<ModifierDefinition const*>(declaration))
+	{
 		parameters = &modifierDecl->parameters();
+		if (auto const* modifierContract = dynamic_cast<ContractDefinition const*>(modifierDecl->scope()))
+			if (m_currentContract)
+			{
+				if (!contains(m_currentContract->annotation().linearizedBaseContracts, modifierContract))
+					m_errorReporter.typeError(
+						9428_error,
+						_modifier.location(),
+						"Can only use modifiers defined in the current contract or in base contracts."
+					);
+			}
+	}
 	else
 		// check parameters for Base constructors
 		for (ContractDefinition const* base: _bases)
@@ -1007,6 +1015,7 @@ void TypeChecker::endVisit(TryStatement const& _tryStatement)
 		}
 	}
 
+	TryCatchClause const* panicClause = nullptr;
 	TryCatchClause const* errorClause = nullptr;
 	TryCatchClause const* lowLevelClause = nullptr;
 	for (size_t i = 1; i < _tryStatement.clauses().size(); ++i)
@@ -1039,7 +1048,7 @@ void TypeChecker::endVisit(TryStatement const& _tryStatement)
 					);
 			}
 		}
-		else if (clause.errorName() == "Error")
+		else if (clause.errorName() == "Error" || clause.errorName() == "Panic")
 		{
 			if (!m_evmVersion.supportsReturndata())
 				m_errorReporter.typeError(
@@ -1050,26 +1059,46 @@ void TypeChecker::endVisit(TryStatement const& _tryStatement)
 					"). You need at least a Byzantium-compatible EVM or use `catch { ... }`."
 				);
 
-			if (errorClause)
-				m_errorReporter.typeError(
-					1036_error,
-					clause.location(),
-					SecondarySourceLocation{}.append("The first clause is here:", errorClause->location()),
-					"This try statement already has an \"Error\" catch clause."
-				);
-			errorClause = &clause;
-			if (
-				!clause.parameters() ||
-				clause.parameters()->parameters().size() != 1 ||
-				*clause.parameters()->parameters().front()->type() != *TypeProvider::stringMemory()
-			)
-				m_errorReporter.typeError(2943_error, clause.location(), "Expected `catch Error(string memory ...) { ... }`.");
+			if (clause.errorName() == "Error")
+			{
+				if (errorClause)
+					m_errorReporter.typeError(
+						1036_error,
+						clause.location(),
+						SecondarySourceLocation{}.append("The first clause is here:", errorClause->location()),
+						"This try statement already has an \"Error\" catch clause."
+					);
+				errorClause = &clause;
+				if (
+					!clause.parameters() ||
+					clause.parameters()->parameters().size() != 1 ||
+					*clause.parameters()->parameters().front()->type() != *TypeProvider::stringMemory()
+				)
+					m_errorReporter.typeError(2943_error, clause.location(), "Expected `catch Error(string memory ...) { ... }`.");
+			}
+			else
+			{
+				if (panicClause)
+					m_errorReporter.typeError(
+						6732_error,
+						clause.location(),
+						SecondarySourceLocation{}.append("The first clause is here:", panicClause->location()),
+						"This try statement already has a \"Panic\" catch clause."
+					);
+				panicClause = &clause;
+				if (
+					!clause.parameters() ||
+					clause.parameters()->parameters().size() != 1 ||
+					*clause.parameters()->parameters().front()->type() != *TypeProvider::uint256()
+				)
+					m_errorReporter.typeError(1271_error, clause.location(), "Expected `catch Panic(uint ...) { ... }`.");
+			}
 		}
 		else
 			m_errorReporter.typeError(
 				3542_error,
 				clause.location(),
-				"Invalid catch clause name. Expected either `catch (...)` or `catch Error(...)`."
+				"Invalid catch clause name. Expected either `catch (...)`, `catch Error(...)`, or `catch Panic(...)`."
 			);
 	}
 }
@@ -1774,14 +1803,6 @@ TypePointer TypeChecker::typeCheckTypeConversionAndRetrieveReturnType(
 					result.message()
 				);
 		}
-		if (auto addressType = dynamic_cast<AddressType const*>(resultType))
-			if (addressType->stateMutability() != StateMutability::Payable)
-			{
-				bool payable = false;
-				if (argType->category() != Type::Category::Address)
-					payable = argType->isExplicitlyConvertibleTo(*TypeProvider::payableAddress());
-				resultType = payable ? TypeProvider::payableAddress() : TypeProvider::address();
-			}
 	}
 	return resultType;
 }
@@ -2365,7 +2386,16 @@ bool TypeChecker::visit(FunctionCall const& _functionCall)
 			funcCallAnno.kind = FunctionCallKind::StructConstructorCall;
 		}
 		else
+		{
+			if (auto const* contractType = dynamic_cast<ContractType const*>(actualType))
+				if (contractType->isSuper())
+					m_errorReporter.fatalTypeError(
+						1744_error,
+						_functionCall.location(),
+						"Cannot convert to the super type."
+					);
 			funcCallAnno.kind = FunctionCallKind::TypeConversion;
+		}
 
 		funcCallAnno.isPure = argumentsArePure;
 
@@ -2485,14 +2515,24 @@ bool TypeChecker::visit(FunctionCallOptions const& _functionCallOptions)
 		return false;
 	}
 
-	auto setCheckOption = [&](bool& _option, string const&& _name, bool _alreadySet = false)
+	if (
+		expressionFunctionType->valueSet() ||
+		expressionFunctionType->gasSet() ||
+		expressionFunctionType->saltSet()
+	)
+		m_errorReporter.typeError(
+			1645_error,
+			_functionCallOptions.location(),
+			"Function call options have already been set, you have to combine them into a single "
+			"{...}-option."
+		);
+
+	auto setCheckOption = [&](bool& _option, string const& _name)
 	{
-		if (_option || _alreadySet)
+		if (_option)
 			m_errorReporter.typeError(
 				9886_error,
 				_functionCallOptions.location(),
-				_alreadySet ?
-				"Option \"" + std::move(_name) + "\" has already been set." :
 				"Duplicate option \"" + std::move(_name) + "\"."
 			);
 
@@ -2506,7 +2546,7 @@ bool TypeChecker::visit(FunctionCallOptions const& _functionCallOptions)
 		{
 			if (kind == FunctionType::Kind::Creation)
 			{
-				setCheckOption(setSalt, "salt", expressionFunctionType->saltSet());
+				setCheckOption(setSalt, "salt");
 				expectType(*_functionCallOptions.options()[i], *TypeProvider::fixedBytes(32));
 			}
 			else
@@ -2544,7 +2584,7 @@ bool TypeChecker::visit(FunctionCallOptions const& _functionCallOptions)
 			{
 				expectType(*_functionCallOptions.options()[i], *TypeProvider::uint256());
 
-				setCheckOption(setValue, "value", expressionFunctionType->valueSet());
+				setCheckOption(setValue, "value");
 			}
 		}
 		else if (name == "gas")
@@ -2559,7 +2599,7 @@ bool TypeChecker::visit(FunctionCallOptions const& _functionCallOptions)
 			{
 				expectType(*_functionCallOptions.options()[i], *TypeProvider::uint256());
 
-				setCheckOption(setGas, "gas", expressionFunctionType->gasSet());
+				setCheckOption(setGas, "gas");
 			}
 		}
 		else
@@ -2591,7 +2631,7 @@ void TypeChecker::endVisit(NewExpression const& _newExpression)
 
 	if (auto contractName = dynamic_cast<UserDefinedTypeName const*>(&_newExpression.typeName()))
 	{
-		auto contract = dynamic_cast<ContractDefinition const*>(&dereference(*contractName));
+		auto contract = dynamic_cast<ContractDefinition const*>(&dereference(contractName->pathNode()));
 
 		if (!contract)
 			m_errorReporter.fatalTypeError(5540_error, _newExpression.location(), "Identifier is not a contract.");
@@ -2810,9 +2850,12 @@ bool TypeChecker::visit(MemberAccess const& _memberAccess)
 			);
 
 		if (!funType->bound())
-			if (auto contractType = dynamic_cast<ContractType const*>(exprType))
-				if (contractType->isSuper())
+			if (auto typeType = dynamic_cast<TypeType const*>(exprType))
+			{
+				auto contractType = dynamic_cast<ContractType const*>(typeType->actualType());
+				if (contractType && contractType->isSuper())
 					requiredLookup = VirtualLookup::Super;
+			}
 	}
 
 	annotation.requiredLookup = requiredLookup;
@@ -2878,6 +2921,7 @@ bool TypeChecker::visit(MemberAccess const& _memberAccess)
 		{
 			annotation.isPure = true;
 			ContractType const& accessedContractType = dynamic_cast<ContractType const&>(*magicType->typeArgument());
+			solAssert(!accessedContractType.isSuper(), "");
 			if (
 				memberName == "runtimeCode" &&
 				!accessedContractType.immutableVariables().empty()
@@ -2887,7 +2931,6 @@ bool TypeChecker::visit(MemberAccess const& _memberAccess)
 					_memberAccess.location(),
 					"\"runtimeCode\" is not available for contracts containing immutable variables."
 				);
-
 			if (m_currentContract)
 			{
 				// TODO in the same way as with ``new``,
@@ -2913,7 +2956,24 @@ bool TypeChecker::visit(MemberAccess const& _memberAccess)
 			(memberName == "min" ||	memberName == "max")
 		)
 			annotation.isPure = true;
+		else if (magicType->kind() == MagicType::Kind::Block && memberName == "chainid" && !m_evmVersion.hasChainID())
+			m_errorReporter.typeError(
+				3081_error,
+				_memberAccess.location(),
+				"\"chainid\" is not supported by the VM version."
+			);
 	}
+
+	if (
+		_memberAccess.expression().annotation().type->category() == Type::Category::Address &&
+		memberName == "codehash" &&
+		!m_evmVersion.hasExtCodeHash()
+	)
+		m_errorReporter.typeError(
+			7598_error,
+			_memberAccess.location(),
+			"\"codehash\" is not supported by the VM version."
+		);
 
 	if (!annotation.isPure.set())
 		annotation.isPure = false;
@@ -3257,6 +3317,23 @@ bool TypeChecker::visit(Identifier const& _identifier)
 	return false;
 }
 
+void TypeChecker::endVisit(IdentifierPath const& _identifierPath)
+{
+	if (
+		dynamic_cast<CallableDeclaration const*>(_identifierPath.annotation().referencedDeclaration) &&
+		_identifierPath.path().size() == 1
+	)
+		_identifierPath.annotation().requiredLookup = VirtualLookup::Virtual;
+	else
+		_identifierPath.annotation().requiredLookup = VirtualLookup::Static;
+}
+
+void TypeChecker::endVisit(UserDefinedTypeName const& _userDefinedTypeName)
+{
+	if (!_userDefinedTypeName.annotation().type)
+		_userDefinedTypeName.annotation().type = _userDefinedTypeName.pathNode().annotation().referencedDeclaration->type();
+}
+
 void TypeChecker::endVisit(ElementaryTypeNameExpression const& _expr)
 {
 	_expr.annotation().type = TypeProvider::typeType(TypeProvider::fromElementaryTypeName(_expr.type().typeName(), _expr.type().stateMutability()));
@@ -3270,7 +3347,7 @@ void TypeChecker::endVisit(Literal const& _literal)
 	if (_literal.looksLikeAddress())
 	{
 		// Assign type here if it even looks like an address. This prevents double errors for invalid addresses
-		_literal.annotation().type = TypeProvider::payableAddress();
+		_literal.annotation().type = TypeProvider::address();
 
 		string msg;
 		if (_literal.valueWithoutUnderscores().length() != 42) // "0x" + 40 hex digits
@@ -3354,10 +3431,10 @@ Declaration const& TypeChecker::dereference(Identifier const& _identifier) const
 	return *_identifier.annotation().referencedDeclaration;
 }
 
-Declaration const& TypeChecker::dereference(UserDefinedTypeName const& _typeName) const
+Declaration const& TypeChecker::dereference(IdentifierPath const& _path) const
 {
-	solAssert(!!_typeName.annotation().referencedDeclaration, "Declaration not stored.");
-	return *_typeName.annotation().referencedDeclaration;
+	solAssert(!!_path.annotation().referencedDeclaration, "Declaration not stored.");
+	return *_path.annotation().referencedDeclaration;
 }
 
 bool TypeChecker::expectType(Expression const& _expression, Type const& _expectedType)

@@ -121,9 +121,9 @@ bg::VarDeclRef BoogieContext::freshTempVar(bg::TypeDeclRef type, string prefix)
 	return bg::Decl::variable(prefix + "#" + util::toString(nextId()), type);
 }
 
-void BoogieContext::printErrors(ostream& out)
+void BoogieContext::printErrors(ostream& out, bool _colored, bool _withErrorIds)
 {
-	SourceReferenceFormatter formatter(out);
+	SourceReferenceFormatter formatter(out, _colored, _withErrorIds);
 	for (auto const& error: errorReporter()->errors())
 		formatter.printExceptionInformation(*error,
 				(error->type() == Error::Type::Warning) ? "solc-verify warning" : "solc-verify error");

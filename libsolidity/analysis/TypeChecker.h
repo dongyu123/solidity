@@ -149,6 +149,8 @@ private:
 	bool visit(IndexAccess const& _indexAccess) override;
 	bool visit(IndexRangeAccess const& _indexRangeAccess) override;
 	bool visit(Identifier const& _identifier) override;
+	void endVisit(IdentifierPath const& _identifierPath) override;
+	void endVisit(UserDefinedTypeName const& _userDefinedTypeName) override;
 	void endVisit(ElementaryTypeNameExpression const& _expr) override;
 	void endVisit(Literal const& _literal) override;
 	void endVisit(UsingForDirective const& _usingForDirective) override;
@@ -161,7 +163,7 @@ private:
 	/// @returns the referenced declaration and throws on error.
 	Declaration const& dereference(Identifier const& _identifier) const;
 	/// @returns the referenced declaration and throws on error.
-	Declaration const& dereference(UserDefinedTypeName const& _typeName) const;
+	Declaration const& dereference(IdentifierPath const& _path) const;
 
 	std::vector<Declaration const*> cleanOverloadedDeclarations(
 		Identifier const& _reference,

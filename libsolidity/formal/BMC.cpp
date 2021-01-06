@@ -100,9 +100,9 @@ void BMC::analyze(SourceUnit const& _source, map<ASTNode const*, set<Verificatio
 	m_errorReporter.clear();
 }
 
-bool BMC::shouldInlineFunctionCall(FunctionCall const& _funCall)
+bool BMC::shouldInlineFunctionCall(FunctionCall const& _funCall, ContractDefinition const* _contract)
 {
-	FunctionDefinition const* funDef = functionCallToDefinition(_funCall);
+	auto [funDef, contextContract] = functionCallToDefinition(_funCall, _contract);
 	if (!funDef || !funDef->isImplemented())
 		return false;
 
@@ -137,8 +137,7 @@ void BMC::endVisit(ContractDefinition const& _contract)
 		inlineConstructorHierarchy(_contract);
 		popCallStack();
 		/// Check targets created by state variable initialization.
-		smtutil::Expression constraints = m_context.assertions();
-		checkVerificationTargets(constraints);
+		checkVerificationTargets();
 		m_verificationTargets.clear();
 	}
 
@@ -158,6 +157,7 @@ bool BMC::visit(FunctionDefinition const& _function)
 	{
 		reset();
 		initFunction(_function);
+		m_context.addAssertion(m_context.state().txConstraints(_function));
 		resetStateVariables();
 	}
 
@@ -174,8 +174,7 @@ void BMC::endVisit(FunctionDefinition const& _function)
 {
 	if (isRootFunction())
 	{
-		smtutil::Expression constraints = m_context.assertions();
-		checkVerificationTargets(constraints);
+		checkVerificationTargets();
 		m_verificationTargets.clear();
 		m_pathConditions.clear();
 	}
@@ -473,8 +472,8 @@ void BMC::visitAddMulMod(FunctionCall const& _funCall)
 
 void BMC::inlineFunctionCall(FunctionCall const& _funCall)
 {
-	solAssert(shouldInlineFunctionCall(_funCall), "");
-	FunctionDefinition const* funDef = functionCallToDefinition(_funCall);
+	solAssert(shouldInlineFunctionCall(_funCall, m_currentContract), "");
+	auto [funDef, contextContract] = functionCallToDefinition(_funCall, m_currentContract);
 	solAssert(funDef, "");
 
 	if (visitedFunction(funDef))
@@ -488,7 +487,7 @@ void BMC::inlineFunctionCall(FunctionCall const& _funCall)
 	}
 	else
 	{
-		initializeFunctionCallParameters(*funDef, symbolicArguments(_funCall));
+		initializeFunctionCallParameters(*funDef, symbolicArguments(_funCall, m_currentContract));
 
 		// The reason why we need to pushCallStack here instead of visit(FunctionDefinition)
 		// is that there we don't have `_funCall`.
@@ -498,13 +497,13 @@ void BMC::inlineFunctionCall(FunctionCall const& _funCall)
 		popPathCondition();
 	}
 
-	createReturnedExpressions(_funCall);
+	createReturnedExpressions(_funCall, m_currentContract);
 }
 
 void BMC::internalOrExternalFunctionCall(FunctionCall const& _funCall)
 {
 	auto const& funType = dynamic_cast<FunctionType const&>(*_funCall.expression().annotation().type);
-	if (shouldInlineFunctionCall(_funCall))
+	if (shouldInlineFunctionCall(_funCall, m_currentContract))
 		inlineFunctionCall(_funCall);
 	else if (isPublicGetter(_funCall.expression()))
 	{
@@ -533,6 +532,7 @@ pair<smtutil::Expression, smtutil::Expression> BMC::arithmeticOperation(
 	Expression const& _expression
 )
 {
+	// Unchecked does not disable div by 0 checks.
 	if (_op == Token::Div || _op == Token::Mod)
 		addVerificationTarget(
 			VerificationTarget::Type::DivByZero,
@@ -541,6 +541,9 @@ pair<smtutil::Expression, smtutil::Expression> BMC::arithmeticOperation(
 		);
 
 	auto values = SMTEncoder::arithmeticOperation(_op, _left, _right, _commonType, _expression);
+
+	if (!m_checked)
+		return values;
 
 	auto const* intType = dynamic_cast<IntegerType const*>(_commonType);
 	if (!intType)
@@ -624,13 +627,13 @@ pair<vector<smtutil::Expression>, vector<string>> BMC::modelExpressions()
 
 /// Verification targets.
 
-void BMC::checkVerificationTargets(smtutil::Expression const& _constraints)
+void BMC::checkVerificationTargets()
 {
 	for (auto& target: m_verificationTargets)
-		checkVerificationTarget(target, _constraints);
+		checkVerificationTarget(target);
 }
 
-void BMC::checkVerificationTarget(BMCVerificationTarget& _target, smtutil::Expression const& _constraints)
+void BMC::checkVerificationTarget(BMCVerificationTarget& _target)
 {
 	switch (_target.type)
 	{
@@ -638,14 +641,14 @@ void BMC::checkVerificationTarget(BMCVerificationTarget& _target, smtutil::Expre
 			checkConstantCondition(_target);
 			break;
 		case VerificationTarget::Type::Underflow:
-			checkUnderflow(_target, _constraints);
+			checkUnderflow(_target);
 			break;
 		case VerificationTarget::Type::Overflow:
-			checkOverflow(_target, _constraints);
+			checkOverflow(_target);
 			break;
 		case VerificationTarget::Type::UnderOverflow:
-			checkUnderflow(_target, _constraints);
-			checkOverflow(_target, _constraints);
+			checkUnderflow(_target);
+			checkOverflow(_target);
 			break;
 		case VerificationTarget::Type::DivByZero:
 			checkDivByZero(_target);
@@ -671,7 +674,7 @@ void BMC::checkConstantCondition(BMCVerificationTarget& _target)
 	);
 }
 
-void BMC::checkUnderflow(BMCVerificationTarget& _target, smtutil::Expression const& _constraints)
+void BMC::checkUnderflow(BMCVerificationTarget& _target)
 {
 	solAssert(
 		_target.type == VerificationTarget::Type::Underflow ||
@@ -692,7 +695,7 @@ void BMC::checkUnderflow(BMCVerificationTarget& _target, smtutil::Expression con
 		intType = TypeProvider::uint256();
 
 	checkCondition(
-		_target.constraints && _constraints && _target.value < smt::minValue(*intType),
+		_target.constraints && _target.value < smt::minValue(*intType),
 		_target.callStack,
 		_target.modelExpressions,
 		_target.expression->location(),
@@ -704,7 +707,7 @@ void BMC::checkUnderflow(BMCVerificationTarget& _target, smtutil::Expression con
 	);
 }
 
-void BMC::checkOverflow(BMCVerificationTarget& _target, smtutil::Expression const& _constraints)
+void BMC::checkOverflow(BMCVerificationTarget& _target)
 {
 	solAssert(
 		_target.type == VerificationTarget::Type::Overflow ||
@@ -725,7 +728,7 @@ void BMC::checkOverflow(BMCVerificationTarget& _target, smtutil::Expression cons
 		intType = TypeProvider::uint256();
 
 	checkCondition(
-		_target.constraints && _constraints && _target.value > smt::maxValue(*intType),
+		_target.constraints && _target.value > smt::maxValue(*intType),
 		_target.callStack,
 		_target.modelExpressions,
 		_target.expression->location(),

@@ -88,7 +88,7 @@ SemanticTest::SemanticTest(string const& _filename, langutil::EVMVersion _evmVer
 		m_runWithEwasm = false;
 
 	m_runWithABIEncoderV1Only = m_reader.boolSetting("ABIEncoderV1Only", false);
-	if (m_runWithABIEncoderV1Only && solidity::test::CommonOptions::get().useABIEncoderV2)
+	if (m_runWithABIEncoderV1Only && !solidity::test::CommonOptions::get().useABIEncoderV1)
 		m_shouldRun = false;
 
 	auto revertStrings = revertStringsFromString(m_reader.stringSetting("revertStrings", "default"));
@@ -213,10 +213,12 @@ TestCase::TestResult SemanticTest::runTest(ostream& _stream, string const& _line
 					);
 				}
 
-				if (
-					m_transactionSuccessful == test.call().expectations.failure ||
-					output != test.call().expectations.rawBytes()
-				)
+				bool outputMismatch = (output != test.call().expectations.rawBytes());
+				// Pre byzantium, it was not possible to return failure data, so we disregard
+				// output mismatch for those EVM versions.
+				if (test.call().expectations.failure && !m_transactionSuccessful && !m_evmVersion.supportsReturndata())
+					outputMismatch = false;
+				if (m_transactionSuccessful != !test.call().expectations.failure || outputMismatch)
 					success = false;
 
 				test.setFailure(!m_transactionSuccessful);

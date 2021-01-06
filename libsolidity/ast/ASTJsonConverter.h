@@ -51,11 +51,9 @@ class ASTJsonConverter: public ASTConstVisitor
 {
 public:
 	/// Create a converter to JSON for the given abstract syntax tree.
-	/// @a _legacy if true, use legacy format
 	/// @a _stackState state of the compiler stack to avoid outputting incomplete data
 	/// @a _sourceIndices is used to abbreviate source names in source locations.
 	explicit ASTJsonConverter(
-		bool _legacy,
 		CompilerStack::State _stackState,
 		std::map<std::string, unsigned> _sourceIndices = std::map<std::string, unsigned>()
 	);
@@ -77,6 +75,7 @@ public:
 	bool visit(PragmaDirective const& _node) override;
 	bool visit(ImportDirective const& _node) override;
 	bool visit(ContractDefinition const& _node) override;
+	bool visit(IdentifierPath const& _node) override;
 	bool visit(InheritanceSpecifier const& _node) override;
 	bool visit(UsingForDirective const& _node) override;
 	bool visit(StructDefinition const& _node) override;
@@ -191,7 +190,6 @@ private:
 		_array.append(std::move(_value));
 	}
 
-	bool m_legacy = false; ///< if true, use legacy format
 	CompilerStack::State m_stackState = CompilerStack::State::Empty; ///< Used to only access information that already exists
 	bool m_inEvent = false; ///< whether we are currently inside an event or not
 	Json::Value m_currentValue;

@@ -679,18 +679,16 @@ string ABIFunctions::abiEncodingFunctionCompactStorageArray(
 				// <readableTypeNameFrom> -> <readableTypeNameTo>
 				function <functionName>(value, pos) -> ret {
 					let slotValue := sload(value)
+					let length := <byteArrayLengthFunction>(slotValue)
+					pos := <storeLength>(pos, length)
 					switch and(slotValue, 1)
 					case 0 {
 						// short byte array
-						let length := and(div(slotValue, 2), 0x7f)
-						pos := <storeLength>(pos, length)
 						mstore(pos, and(slotValue, not(0xff)))
 						ret := add(pos, <lengthPaddedShort>)
 					}
 					case 1 {
 						// long byte array
-						let length := div(slotValue, 2)
-						pos := <storeLength>(pos, length)
 						let dataPos := <arrayDataSlot>(value)
 						let i := 0
 						for { } lt(i, length) { i := add(i, 0x20) } {
@@ -704,6 +702,7 @@ string ABIFunctions::abiEncodingFunctionCompactStorageArray(
 			templ("functionName", functionName);
 			templ("readableTypeNameFrom", _from.toString(true));
 			templ("readableTypeNameTo", _to.toString(true));
+			templ("byteArrayLengthFunction", m_utils.extractByteArrayLengthFunction());
 			templ("storeLength", arrayStoreLengthForEncodingFunction(_to, _options));
 			templ("lengthPaddedShort", _options.padded ? "0x20" : "length");
 			templ("lengthPaddedLong", _options.padded ? "i" : "length");
@@ -977,30 +976,20 @@ string ABIFunctions::abiEncodingFunctionStringLiteral(
 			Whiskers templ(R"(
 				function <functionName>(pos) -> end {
 					pos := <storeLength>(pos, <length>)
-					<#word>
-						mstore(add(pos, <offset>), <wordValue>)
-					</word>
+					<storeLiteralInMemory>(pos)
 					end := add(pos, <overallSize>)
 				}
 			)");
 			templ("functionName", functionName);
 
 			// TODO this can make use of CODECOPY for large strings once we have that in Yul
-			size_t words = (value.size() + 31) / 32;
 			templ("length", to_string(value.size()));
 			templ("storeLength", arrayStoreLengthForEncodingFunction(dynamic_cast<ArrayType const&>(_to), _options));
 			if (_options.padded)
-				templ("overallSize", to_string(words * 32));
+				templ("overallSize", to_string(((value.size() + 31) / 32) * 32));
 			else
 				templ("overallSize", to_string(value.size()));
-
-			vector<map<string, string>> wordParams(words);
-			for (size_t i = 0; i < words; ++i)
-			{
-				wordParams[i]["offset"] = to_string(i * 32);
-				wordParams[i]["wordValue"] = formatAsStringOrNumber(value.substr(32 * i, 32));
-			}
-			templ("word", wordParams);
+			templ("storeLiteralInMemory", m_utils.storeLiteralInMemoryFunction(value));
 			return templ.render();
 		}
 		else

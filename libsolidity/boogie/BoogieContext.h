@@ -215,7 +215,7 @@ public:
 	void setCurrentContract(ContractDefinition const* contract);
 	SourceUnit const* currentSource() const { return m_currentSource; }
 	void setCurrentSource(SourceUnit const* source) { m_currentSource = source; }
-	void printErrors(std::ostream& out);
+	void printErrors(std::ostream& out, bool _colored = false, bool _withErrorIds = false);
 
 	/** Prints the Boogie program to an output stream. */
 	void print(std::ostream& _stream) { m_program.print(_stream); }

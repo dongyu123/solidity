@@ -131,6 +131,7 @@ private:
 	ASTPointer<ModifierInvocation> parseModifierInvocation();
 	ASTPointer<Identifier> parseIdentifier();
 	ASTPointer<UserDefinedTypeName> parseUserDefinedTypeName();
+	ASTPointer<IdentifierPath> parseIdentifierPath();
 	ASTPointer<TypeName> parseTypeNameSuffix(ASTPointer<TypeName> type, ASTNodeFactory& nodeFactory);
 	ASTPointer<TypeName> parseTypeName();
 	ASTPointer<FunctionTypeName> parseFunctionType();
@@ -140,8 +141,8 @@ private:
 		bool _allowEmpty = true
 	);
 	ASTPointer<ParameterList> parseSpecificationParameterList(ASTPointer<TypeName> type);
-	ASTPointer<Block> parseBlock(ASTPointer<ASTString> const& _docString = {});
-	ASTPointer<Statement> parseStatement();
+	ASTPointer<Block> parseBlock(bool _allowUncheckedBlock = false, ASTPointer<ASTString> const& _docString = {});
+	ASTPointer<Statement> parseStatement(bool _allowUncheckedBlock = false);
 	ASTPointer<InlineAssembly> parseInlineAssembly(ASTPointer<ASTString> const& _docString = {});
 	ASTPointer<IfStatement> parseIfStatement(ASTPointer<ASTString> const& _docString);
 	ASTPointer<TryStatement> parseTryStatement(ASTPointer<ASTString> const& _docString);

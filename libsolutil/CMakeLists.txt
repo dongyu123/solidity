@@ -2,6 +2,7 @@ set(sources
 	Algorithms.h
 	AnsiColorized.h
 	Assertions.h
+	Common.cpp
 	Common.h
 	CommonData.cpp
 	CommonData.h
@@ -9,6 +10,7 @@ set(sources
 	CommonIO.h
 	Exceptions.cpp
 	Exceptions.h
+	ErrorCodes.h
 	FixedHash.h
 	FunctionSelector.h
 	IndentedWriter.cpp

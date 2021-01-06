@@ -476,7 +476,8 @@ void CHC::endVisit(FunctionCall const& _funCall)
 		break;
 	}
 
-	createReturnedExpressions(_funCall);
+
+	createReturnedExpressions(_funCall, m_currentContract);
 }
 
 void CHC::endVisit(Break const& _break)
@@ -580,18 +581,17 @@ void CHC::internalFunctionCall(FunctionCall const& _funCall)
 {
 	solAssert(m_currentContract, "");
 
-	auto const* function = functionCallToDefinition(_funCall);
+	auto [function, contract] = functionCallToDefinition(_funCall, m_currentContract);
 	if (function)
 	{
 		if (m_currentFunction && !m_currentFunction->isConstructor())
 			m_callGraph[m_currentFunction].insert(function);
 		else
 			m_callGraph[m_currentContract].insert(function);
-		auto const* contract = function->annotation().contract;
 
 		// Libraries can have constants as their "state" variables,
 		// so we need to ensure they were constructed correctly.
-		if (contract->isLibrary())
+		if (function->annotation().contract->isLibrary())
 			m_context.addAssertion(interface(*contract));
 	}
 
@@ -623,7 +623,8 @@ void CHC::externalFunctionCall(FunctionCall const& _funCall)
 	auto kind = funType.kind();
 	solAssert(kind == FunctionType::Kind::External || kind == FunctionType::Kind::BareStaticCall, "");
 
-	auto const* function = functionCallToDefinition(_funCall);
+	solAssert(m_currentContract, "");
+	auto [function, contextContract] = functionCallToDefinition(_funCall, m_currentContract);
 	if (!function)
 		return;
 
@@ -642,10 +643,20 @@ void CHC::externalFunctionCall(FunctionCall const& _funCall)
 	}
 
 	auto postCallState = vector<smtutil::Expression>{state().state()} + currentStateVariables();
-	auto nondet = (*m_nondetInterfaces.at(m_currentContract))(preCallState + postCallState);
+	auto error = errorFlag().increaseIndex();
+	vector<smtutil::Expression> stateExprs{error, state().thisAddress(), state().abi(), state().crypto()};
+	auto nondet = (*m_nondetInterfaces.at(m_currentContract))(stateExprs + preCallState + postCallState);
 	// TODO this could instead add the summary of the called function, where that summary
 	// basically has the nondet interface of this summary as a constraint.
 	m_context.addAssertion(nondet);
+	solAssert(m_errorDest, "");
+	connectBlocks(m_currentBlock, predicate(*m_errorDest), errorFlag().currentValue() > 0);
+	// To capture the possibility of a reentrant call, we record in the call graph that the  current function
+	// can call any of the external methods of the current contract.
+	solAssert(m_currentContract && m_currentFunction, "");
+	for (auto const* definedFunction: contractFunctions(*m_currentContract))
+		if (!definedFunction->isConstructor() && definedFunction->isPublic())
+			m_callGraph[m_currentFunction].insert(definedFunction);
 
 	m_context.addAssertion(errorFlag().currentValue() == 0);
 }
@@ -657,7 +668,8 @@ void CHC::externalFunctionCallToTrustedCode(FunctionCall const& _funCall)
 	auto kind = funType.kind();
 	solAssert(kind == FunctionType::Kind::External || kind == FunctionType::Kind::BareStaticCall, "");
 
-	auto const* function = functionCallToDefinition(_funCall);
+	solAssert(m_currentContract, "");
+	auto [function, contextContract] = functionCallToDefinition(_funCall, m_currentContract);
 	if (!function)
 		return;
 
@@ -720,10 +732,14 @@ pair<smtutil::Expression, smtutil::Expression> CHC::arithmeticOperation(
 	frontend::Expression const& _expression
 )
 {
+	// Unchecked does not disable div by 0 checks.
 	if (_op == Token::Mod || _op == Token::Div)
 		verificationTargetEncountered(&_expression, VerificationTarget::Type::DivByZero, _right == 0);
 
 	auto values = SMTEncoder::arithmeticOperation(_op, _left, _right, _commonType, _expression);
+
+	if (!m_checked)
+		return values;
 
 	IntegerType const* intType = nullptr;
 	if (auto const* type = dynamic_cast<IntegerType const*>(_commonType))
@@ -821,7 +837,7 @@ void CHC::clearIndices(ContractDefinition const* _contract, FunctionDefinition c
 	{
 		for (auto const& var: _function->parameters() + _function->returnParameters())
 			m_context.variable(*var)->increaseIndex();
-		for (auto const& var: localVariablesIncludingModifiers(*_function))
+		for (auto const& var: localVariablesIncludingModifiers(*_function, _contract))
 			m_context.variable(*var)->increaseIndex();
 	}
 
@@ -889,43 +905,39 @@ void CHC::defineInterfacesAndSummaries(SourceUnit const& _source)
 			/// 0 steps to be taken, used as base for the inductive
 			/// rule for each function.
 			auto const& iface = *m_nondetInterfaces.at(contract);
-			addRule(smt::nondetInterface(iface, *contract, m_context, 0, 0), "base_nondet");
+			addRule(smtutil::Expression::implies(errorFlag().currentValue() == 0, smt::nondetInterface(iface, *contract, m_context, 0, 0)), "base_nondet");
 
-			for (auto const* base: contract->annotation().linearizedBaseContracts)
-				for (auto const* function: base->definedFunctions())
+			for (auto const* function: contractFunctions(*contract))
+			{
+				for (auto var: function->parameters())
+					createVariable(*var);
+				for (auto var: function->returnParameters())
+					createVariable(*var);
+				for (auto const* var: localVariablesIncludingModifiers(*function, contract))
+					createVariable(*var);
+
+				m_summaries[contract].emplace(function, createSummaryBlock(*function, *contract));
+
+				if (!function->isConstructor() && function->isPublic())
 				{
-					for (auto var: function->parameters())
-						createVariable(*var);
-					for (auto var: function->returnParameters())
-						createVariable(*var);
-					for (auto const* var: localVariablesIncludingModifiers(*function))
-						createVariable(*var);
+					auto state1 = stateVariablesAtIndex(1, *contract);
+					auto state2 = stateVariablesAtIndex(2, *contract);
 
-					m_summaries[contract].emplace(function, createSummaryBlock(*function, *contract));
+					auto errorPre = errorFlag().currentValue();
+					auto nondetPre = smt::nondetInterface(iface, *contract, m_context, 0, 1);
+					auto errorPost = errorFlag().increaseIndex();
+					auto nondetPost = smt::nondetInterface(iface, *contract, m_context, 0, 2);
 
-					if (
-						!function->isConstructor() &&
-						function->isPublic() &&
-						!base->isLibrary() &&
-						!base->isInterface()
-					)
-					{
-						auto state1 = stateVariablesAtIndex(1, *contract);
-						auto state2 = stateVariablesAtIndex(2, *contract);
+					vector<smtutil::Expression> args{errorPost, state().thisAddress(), state().abi(), state().crypto(), state().tx(), state().state(1)};
+					args += state1 +
+						applyMap(function->parameters(), [this](auto _var) { return valueAtIndex(*_var, 0); }) +
+						vector<smtutil::Expression>{state().state(2)} +
+						state2 +
+						applyMap(function->parameters(), [this](auto _var) { return valueAtIndex(*_var, 1); }) +
+						applyMap(function->returnParameters(), [this](auto _var) { return valueAtIndex(*_var, 1); });
 
-						auto nondetPre = smt::nondetInterface(iface, *contract, m_context, 0, 1);
-						auto nondetPost = smt::nondetInterface(iface, *contract, m_context, 0, 2);
-
-						vector<smtutil::Expression> args{errorFlag().currentValue(), state().thisAddress(), state().crypto(), state().tx(), state().state(1)};
-						args += state1 +
-							applyMap(function->parameters(), [this](auto _var) { return valueAtIndex(*_var, 0); }) +
-							vector<smtutil::Expression>{state().state(2)} +
-							state2 +
-							applyMap(function->parameters(), [this](auto _var) { return valueAtIndex(*_var, 1); }) +
-							applyMap(function->returnParameters(), [this](auto _var) { return valueAtIndex(*_var, 1); });
-
-						connectBlocks(nondetPre, nondetPost, (*m_summaries.at(contract).at(function))(args));
-					}
+					connectBlocks(nondetPre, nondetPost, errorPre == 0 && (*m_summaries.at(contract).at(function))(args));
+				}
 			}
 		}
 }
@@ -1147,7 +1159,8 @@ smtutil::Expression CHC::predicate(FunctionCall const& _funCall)
 	auto kind = funType.kind();
 	solAssert(kind == FunctionType::Kind::Internal || kind == FunctionType::Kind::External || kind == FunctionType::Kind::BareStaticCall, "");
 
-	auto const* function = functionCallToDefinition(_funCall);
+	solAssert(m_currentContract, "");
+	auto [function, contextContract] = functionCallToDefinition(_funCall, m_currentContract);
 	if (!function)
 		return smtutil::Expression(true);
 
@@ -1160,23 +1173,23 @@ smtutil::Expression CHC::predicate(FunctionCall const& _funCall)
 		solAssert(false, "Unreachable!");
 	};
 	errorFlag().increaseIndex();
-	vector<smtutil::Expression> args{errorFlag().currentValue(), contractAddressValue(_funCall), state().crypto(), state().tx(), state().state()};
+	vector<smtutil::Expression> args{errorFlag().currentValue(), contractAddressValue(_funCall), state().abi(), state().crypto(), state().tx(), state().state()};
 
 	auto const* contract = function->annotation().contract;
 	auto const& hierarchy = m_currentContract->annotation().linearizedBaseContracts;
-	solAssert(kind != FunctionType::Kind::Internal || contract->isLibrary() || contains(hierarchy, contract), "");
+	solAssert(kind != FunctionType::Kind::Internal || contract->isLibrary() || contains(hierarchy, contextContract), "");
 
 	/// If the call is to a library, we use that library as the called contract.
 	/// If the call is to a contract not in the inheritance hierarchy, we also use that as the called contract.
 	/// Otherwise, the call is to some contract in the inheritance hierarchy of the current contract.
 	/// In this case we use current contract as the called one since the interfaces/predicates are different.
-	auto const* calledContract = contains(hierarchy, contract) ?  m_currentContract : contract;
+	auto const* calledContract = contains(hierarchy, contract) ? contextContract : contract;
 	solAssert(calledContract, "");
 
 	bool usesStaticCall = function->stateMutability() == StateMutability::Pure || function->stateMutability() == StateMutability::View;
 
 	args += currentStateVariables(*calledContract);
-	args += symbolicArguments(_funCall);
+	args += symbolicArguments(_funCall, m_currentContract);
 	if (!calledContract->isLibrary() && !usesStaticCall)
 	{
 		state().newState();

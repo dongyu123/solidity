@@ -327,7 +327,6 @@ Input Description
         //
         // File level (needs empty string as contract name):
         //   ast - AST of all source files
-        //   legacyAST - legacy AST of all source files
         //
         // Contract level (needs the contract name or "*"):
         //   abi - ABI
@@ -430,8 +429,6 @@ Output Description
           "id": 1,
           // The AST object
           "ast": {},
-          // The legacy AST object
-          "legacyAST": {}
         }
       },
       // This contains the contract-level outputs.
@@ -650,8 +647,8 @@ Available upgrade modules
 +----------------------------+---------+--------------------------------------------------+
 
 Please read :doc:`0.5.0 release notes <050-breaking-changes>`,
-:doc:`0.6.0 release notes <060-breaking-changes>` and
-:doc:`0.7.0 release notes <070-breaking-changes>` for further details.
+:doc:`0.6.0 release notes <060-breaking-changes>`,
+:doc:`0.7.0 release notes <070-breaking-changes>` and :doc:`0.8.0 release notes <080-breaking-changes>` for further details.
 
 Synopsis
 ~~~~~~~~
@@ -745,8 +742,8 @@ have to be updated manually.)
 
 .. code-block:: Solidity
 
-    pragma solidity ^0.7.0;
     // SPDX-License-Identifier: GPL-3.0
+    pragma solidity >=0.7.0 <0.9.0;
     abstract contract C {
         // FIXME: remove constructor visibility and make the contract abstract
         constructor() {}

@@ -385,7 +385,7 @@ BOOST_AUTO_TEST_CASE(basic_compilation)
 			"outputSelection": {
 				"fileA": {
 					"A": [ "abi", "devdoc", "userdoc", "evm.bytecode", "evm.assembly", "evm.gasEstimates", "evm.legacyAssembly", "metadata" ],
-					"": [ "legacyAST" ]
+					"": [ "ast" ]
 				}
 			}
 		}
@@ -468,13 +468,13 @@ BOOST_AUTO_TEST_CASE(basic_compilation)
 	BOOST_CHECK(solidity::test::isValidMetadata(contract["metadata"].asString()));
 	BOOST_CHECK(result["sources"].isObject());
 	BOOST_CHECK(result["sources"]["fileA"].isObject());
-	BOOST_CHECK(result["sources"]["fileA"]["legacyAST"].isObject());
+	BOOST_CHECK(result["sources"]["fileA"]["ast"].isObject());
 	BOOST_CHECK_EQUAL(
-		util::jsonCompactPrint(result["sources"]["fileA"]["legacyAST"]),
-		"{\"attributes\":{\"absolutePath\":\"fileA\",\"exportedSymbols\":{\"A\":[1]}},\"children\":"
-		"[{\"attributes\":{\"abstract\":false,\"baseContracts\":[null],\"contractDependencies\":[null],\"contractKind\":\"contract\","
-		"\"fullyImplemented\":true,\"linearizedBaseContracts\":[1],\"name\":\"A\",\"nodes\":[null],\"scope\":2},"
-		"\"id\":1,\"name\":\"ContractDefinition\",\"src\":\"0:14:0\"}],\"id\":2,\"name\":\"SourceUnit\",\"src\":\"0:14:0\"}"
+		util::jsonCompactPrint(result["sources"]["fileA"]["ast"]),
+		"{\"absolutePath\":\"fileA\",\"exportedSymbols\":{\"A\":[1]},\"id\":2,\"nodeType\":\"SourceUnit\",\"nodes\":[{\"abstract\":false,"
+		"\"baseContracts\":[],\"contractDependencies\":[],\"contractKind\":\"contract\",\"fullyImplemented\":true,\"id\":1,"
+		"\"linearizedBaseContracts\":[1],\"name\":\"A\",\"nodeType\":\"ContractDefinition\",\"nodes\":[],\"scope\":2,"
+		"\"src\":\"0:14:0\"}],\"src\":\"0:14:0\"}"
 	);
 }
 
@@ -510,8 +510,8 @@ BOOST_AUTO_TEST_CASE(compilation_error)
 		{
 			BOOST_CHECK_EQUAL(
 				util::jsonCompactPrint(error),
-				"{\"component\":\"general\",\"errorCode\":\"2314\",\"formattedMessage\":\"fileA:1:23: ParserError: Expected identifier but got '}'\\n"
-				"contract A { function }\\n                      ^\\n\",\"message\":\"Expected identifier but got '}'\","
+				"{\"component\":\"general\",\"errorCode\":\"2314\",\"formattedMessage\":\"ParserError: Expected identifier but got '}'\\n"
+				" --> fileA:1:23:\\n  |\\n1 | contract A { function }\\n  |                       ^\\n\\n\",\"message\":\"Expected identifier but got '}'\","
 				"\"severity\":\"error\",\"sourceLocation\":{\"end\":23,\"file\":\"fileA\",\"start\":22},\"type\":\"ParserError\"}"
 			);
 		}

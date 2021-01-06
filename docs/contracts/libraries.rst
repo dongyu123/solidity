@@ -47,7 +47,7 @@ more advanced example to implement a set).
 ::
 
     // SPDX-License-Identifier: GPL-3.0
-    pragma solidity >=0.6.0 <0.8.0;
+    pragma solidity >=0.6.0 <0.9.0;
 
 
     // We define a new struct datatype that will be used to
@@ -126,7 +126,7 @@ custom types without the overhead of external function calls:
 ::
 
     // SPDX-License-Identifier: GPL-3.0
-    pragma solidity >=0.6.0 <0.8.0;
+    pragma solidity >=0.6.8 <0.9.0;
 
     struct bigint {
         uint[] limbs;
@@ -145,7 +145,7 @@ custom types without the overhead of external function calls:
                 uint a = limb(_a, i);
                 uint b = limb(_b, i);
                 r.limbs[i] = a + b + carry;
-                if (a + b < a || (a + b == uint(-1) && carry > 0))
+                if (a + b < a || (a + b == type(uint).max && carry > 0))
                     carry = 1;
                 else
                     carry = 0;
@@ -175,7 +175,7 @@ custom types without the overhead of external function calls:
 
         function f() public pure {
             bigint memory x = BigInt.fromUint(7);
-            bigint memory y = BigInt.fromUint(uint(-1));
+            bigint memory y = BigInt.fromUint(type(uint).max);
             bigint memory z = x.add(y);
             assert(z.limb(1) > 0);
         }
@@ -234,7 +234,7 @@ Its value can be obtained from Solidity using the ``.selector`` member as follow
 ::
 
     // SPDX-License-Identifier: GPL-3.0
-    pragma solidity >=0.5.14 <0.8.0;
+    pragma solidity >=0.5.14 <0.9.0;
 
     library L {
         function f(uint256) external {}

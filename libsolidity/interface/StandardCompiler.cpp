@@ -117,6 +117,7 @@ Json::Value formatErrorWithException(
 )
 {
 	string message;
+	// TODO: consider enabling color
 	string formattedMessage = SourceReferenceFormatter::formatExceptionInformation(_exception, _type);
 
 	if (string const* description = boost::get_error_info<util::errinfo_comment>(_exception))
@@ -1097,9 +1098,7 @@ Json::Value StandardCompiler::compileSolidity(StandardCompiler::InputsAndSetting
 			Json::Value sourceResult = Json::objectValue;
 			sourceResult["id"] = sourceIndex++;
 			if (isArtifactRequested(_inputsAndSettings.outputSelection, sourceName, "", "ast", wildcardMatchesExperimental))
-				sourceResult["ast"] = ASTJsonConverter(false, compilerStack.state(), compilerStack.sourceIndices()).toJson(compilerStack.ast(sourceName));
-			if (isArtifactRequested(_inputsAndSettings.outputSelection, sourceName, "", "legacyAST", wildcardMatchesExperimental))
-				sourceResult["legacyAST"] = ASTJsonConverter(true, compilerStack.state(), compilerStack.sourceIndices()).toJson(compilerStack.ast(sourceName));
+				sourceResult["ast"] = ASTJsonConverter(compilerStack.state(), compilerStack.sourceIndices()).toJson(compilerStack.ast(sourceName));
 			output["sources"][sourceName] = sourceResult;
 		}
 

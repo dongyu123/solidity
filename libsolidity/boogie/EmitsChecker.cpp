@@ -109,7 +109,7 @@ bool EmitsChecker::check()
 		// Check what called modifiers emit
 		for (auto modif: fn->modifiers())
 		{
-			auto modifierDecl = dynamic_cast<ModifierDefinition const*>(modif->name()->annotation().referencedDeclaration);
+			auto modifierDecl = dynamic_cast<ModifierDefinition const*>(modif->name().annotation().referencedDeclaration);
 			if (modifierDecl)
 			{
 				for (auto ev: m_directlyEmitted[modifierDecl])

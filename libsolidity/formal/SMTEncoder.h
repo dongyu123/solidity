@@ -69,19 +69,28 @@ public:
 
 	/// @returns the FunctionDefinition of a FunctionCall
 	/// if possible or nullptr.
-	static FunctionDefinition const* functionCallToDefinition(FunctionCall const& _funCall);
+	static std::pair<FunctionDefinition const*, ContractDefinition const*> functionCallToDefinition(FunctionCall const& _funCall, ContractDefinition const* _contract = nullptr);
 
 	static std::vector<VariableDeclaration const*> stateVariablesIncludingInheritedAndPrivate(ContractDefinition const& _contract);
 	static std::vector<VariableDeclaration const*> stateVariablesIncludingInheritedAndPrivate(FunctionDefinition const& _function);
 
-	static std::vector<VariableDeclaration const*> localVariablesIncludingModifiers(FunctionDefinition const& _function);
-	static std::vector<VariableDeclaration const*> modifiersVariables(FunctionDefinition const& _function);
+	static std::vector<VariableDeclaration const*> localVariablesIncludingModifiers(FunctionDefinition const& _function, ContractDefinition const* _contract);
+	static std::vector<VariableDeclaration const*> modifiersVariables(FunctionDefinition const& _function, ContractDefinition const* _contract);
+
+	/// @returns the ModifierDefinition of a ModifierInvocation if possible, or nullptr.
+	static ModifierDefinition const* resolveModifierInvocation(ModifierInvocation const& _invocation, ContractDefinition const* _contract);
 
 	/// @returns the SourceUnit that contains _scopable.
 	static SourceUnit const* sourceUnitContaining(Scopable const& _scopable);
 
 	/// @returns the arguments for each base constructor call in the hierarchy of @a _contract.
 	std::map<ContractDefinition const*, std::vector<ASTPointer<frontend::Expression>>> baseArguments(ContractDefinition const& _contract);
+
+	/// @returns a valid RationalNumberType pointer if _expr has type
+	/// RationalNumberType or can be const evaluated, and nullptr otherwise.
+	static RationalNumberType const* isConstant(Expression const& _expr);
+
+	static std::set<FunctionCall const*> collectABICalls(ASTNode const* _node);
 
 protected:
 	// TODO: Check that we do not have concurrent reads and writes to a variable,
@@ -94,6 +103,8 @@ protected:
 	bool visit(ModifierDefinition const& _node) override;
 	bool visit(FunctionDefinition const& _node) override;
 	void endVisit(FunctionDefinition const& _node) override;
+	bool visit(Block const& _node) override;
+	void endVisit(Block const& _node) override;
 	bool visit(PlaceholderStatement const& _node) override;
 	bool visit(IfStatement const&) override { return false; }
 	bool visit(WhileStatement const&) override { return false; }
@@ -155,6 +166,7 @@ protected:
 	void initFunction(FunctionDefinition const& _function);
 	void visitAssert(FunctionCall const& _funCall);
 	void visitRequire(FunctionCall const& _funCall);
+	void visitABIFunction(FunctionCall const& _funCall);
 	void visitCryptoFunction(FunctionCall const& _funCall);
 	void visitGasLeft(FunctionCall const& _funCall);
 	virtual void visitAddMulMod(FunctionCall const& _funCall);
@@ -321,12 +333,12 @@ protected:
 
 	/// Creates symbolic expressions for the returned values
 	/// and set them as the components of the symbolic tuple.
-	void createReturnedExpressions(FunctionCall const& _funCall);
+	void createReturnedExpressions(FunctionCall const& _funCall, ContractDefinition const* _contract);
 
 	/// @returns the symbolic arguments for a function call,
 	/// taking into account bound functions and
 	/// type conversion.
-	std::vector<smtutil::Expression> symbolicArguments(FunctionCall const& _funCall);
+	std::vector<smtutil::Expression> symbolicArguments(FunctionCall const& _funCall, ContractDefinition const* _contract);
 
 	/// @returns a note to be added to warnings.
 	std::string extraComment();
@@ -348,6 +360,11 @@ protected:
 	/// Used to retrieve models.
 	std::set<Expression const*> m_uninterpretedTerms;
 	std::vector<smtutil::Expression> m_pathConditions;
+
+	/// Whether the currently visited block uses checked
+	/// or unchecked arithmetic.
+	bool m_checked = true;
+
 	/// Local SMTEncoder ErrorReporter.
 	/// This is necessary to show the "No SMT solver available"
 	/// warning before the others in case it's needed.
@@ -361,6 +378,12 @@ protected:
 	bool isRootFunction();
 	/// Returns true if _funDef was already visited.
 	bool visitedFunction(FunctionDefinition const* _funDef);
+
+	/// @returns FunctionDefinitions of the given contract (including its constructor and inherited methods),
+	/// taking into account overriding of the virtual functions.
+	std::vector<FunctionDefinition const*> const& contractFunctions(ContractDefinition const& _contract);
+	/// Cache for the method contractFunctions.
+	std::map<ContractDefinition const*, std::vector<FunctionDefinition const*>> m_contractFunctions;
 
 	/// Depth of visit to modifiers.
 	/// When m_modifierDepth == #modifiers the function can be visited

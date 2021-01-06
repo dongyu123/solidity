@@ -171,16 +171,16 @@ void ReferencesResolver::endVisit(ModifierDefinition const&)
 	m_returnParameters.pop_back();
 }
 
-void ReferencesResolver::endVisit(UserDefinedTypeName const& _typeName)
+void ReferencesResolver::endVisit(IdentifierPath const& _path)
 {
-	Declaration const* declaration = m_resolver.pathFromCurrentScope(_typeName.namePath());
+	Declaration const* declaration = m_resolver.pathFromCurrentScope(_path.path());
 	if (!declaration)
 	{
-		m_errorReporter.fatalDeclarationError(7920_error, _typeName.location(), "Identifier not found or not unique.");
+		m_errorReporter.fatalDeclarationError(7920_error, _path.location(), "Identifier not found or not unique.");
 		return;
 	}
 
-	_typeName.annotation().referencedDeclaration = declaration;
+	_path.annotation().referencedDeclaration = declaration;
 }
 
 bool ReferencesResolver::visit(InlineAssembly const& _inlineAssembly)
@@ -379,5 +379,12 @@ void ReferencesResolver::validateYulIdentifierName(yul::YulString _name, SourceL
 			3927_error,
 			_location,
 			"User-defined identifiers in inline assembly cannot contain '.'."
+		);
+
+	if (set<string>{"this", "super", "_"}.count(_name.str()))
+		m_errorReporter.declarationError(
+			4113_error,
+			_location,
+			"The identifier name \"" + _name.str() + "\" is reserved."
 		);
 }

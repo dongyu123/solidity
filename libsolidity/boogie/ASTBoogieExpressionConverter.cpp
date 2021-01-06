@@ -1197,10 +1197,9 @@ void ASTBoogieExpressionConverter::functionCallPushPop(MemberAccess const* memAc
 
 bool ASTBoogieExpressionConverter::visit(NewExpression const& _node)
 {
-
 	if (auto userDefType = dynamic_cast<UserDefinedTypeName const*>(&_node.typeName()))
 	{
-		if (auto contract = dynamic_cast<ContractDefinition const*>(userDefType->annotation().referencedDeclaration))
+		if (auto contract = dynamic_cast<ContractDefinition const*>(userDefType->pathNode().annotation().referencedDeclaration))
 		{
 			// TODO: Make sure that it is a fresh address
 			m_currentExpr = bg::Expr::id(ASTBoogieUtils::getConstructorName(contract));

@@ -68,6 +68,7 @@ private:
 
 	void handleCombinedJSON();
 	void handleAst(std::string const& _argStr);
+	void handleAst();
 	void handleBoogie();
 	void handleBinary(std::string const& _contract);
 	void handleOpcode(std::string const& _contract);

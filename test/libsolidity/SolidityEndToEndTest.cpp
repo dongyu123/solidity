@@ -33,6 +33,7 @@
 #include <libevmasm/Assembly.h>
 
 #include <libsolutil/Keccak256.h>
+#include <libsolutil/ErrorCodes.h>
 
 #include <boost/range/adaptor/transformed.hpp>
 #include <boost/test/unit_test.hpp>
@@ -646,10 +647,12 @@ BOOST_AUTO_TEST_CASE(high_bits_cleaning)
 	char const* sourceCode = R"(
 		contract test {
 			function run() public returns(uint256 y) {
-				uint32 t = uint32(0xffffffff);
-				uint32 x = t + 10;
-				if (x >= 0xffffffff) return 0;
-				return x;
+				unchecked {
+					uint32 t = uint32(0xffffffff);
+					uint32 x = t + 10;
+					if (x >= 0xffffffff) return 0;
+					return x;
+				}
 			}
 		}
 	)";
@@ -670,9 +673,11 @@ BOOST_AUTO_TEST_CASE(sign_extension)
 	char const* sourceCode = R"(
 		contract test {
 			function run() public returns(uint256 y) {
-				int64 x = -int32(0xff);
-				if (x >= 0xff) return 0;
-				return -uint256(x);
+				unchecked {
+					int64 x = -int32(int64(0xff));
+					if (x >= 0xff) return 0;
+					return 0 - uint256(int256(x));
+				}
 			}
 		}
 	)";
@@ -692,9 +697,11 @@ BOOST_AUTO_TEST_CASE(small_unsigned_types)
 	char const* sourceCode = R"(
 		contract test {
 			function run() public returns(uint256 y) {
-				uint32 t = uint32(0xffffff);
-				uint32 x = t * 0xffffff;
-				return x / 0x100;
+				unchecked {
+					uint32 t = uint32(0xffffff);
+					uint32 x = t * 0xffffff;
+					return x / 0x100;
+				}
 			}
 		}
 	)";
@@ -876,139 +883,6 @@ BOOST_AUTO_TEST_CASE(transfer_ether)
 	)
 }
 
-BOOST_AUTO_TEST_CASE(log0)
-{
-	char const* sourceCode = R"(
-		contract test {
-			function a() public {
-				log0(bytes32(uint256(1)));
-			}
-		}
-	)";
-	ALSO_VIA_YUL(
-		DISABLE_EWASM_TESTRUN()
-
-		compileAndRun(sourceCode);
-		callContractFunction("a()");
-		BOOST_REQUIRE_EQUAL(numLogs(), 1);
-		BOOST_CHECK_EQUAL(logAddress(0), m_contractAddress);
-		BOOST_CHECK_EQUAL(h256(logData(0)), h256(u256(1)));
-		BOOST_CHECK_EQUAL(numLogTopics(0), 0);
-	)
-}
-
-BOOST_AUTO_TEST_CASE(log1)
-{
-	char const* sourceCode = R"(
-		contract test {
-			function a() public {
-				log1(bytes32(uint256(1)), bytes32(uint256(2)));
-			}
-		}
-	)";
-	ALSO_VIA_YUL(
-		DISABLE_EWASM_TESTRUN()
-
-		compileAndRun(sourceCode);
-		callContractFunction("a()");
-		BOOST_REQUIRE_EQUAL(numLogs(), 1);
-		BOOST_CHECK_EQUAL(logAddress(0), m_contractAddress);
-		BOOST_CHECK_EQUAL(h256(logData(0)), h256(u256(1)));
-		BOOST_REQUIRE_EQUAL(numLogTopics(0), 1);
-		BOOST_CHECK_EQUAL(logTopic(0, 0), h256(u256(2)));
-	)
-}
-
-BOOST_AUTO_TEST_CASE(log2)
-{
-	char const* sourceCode = R"(
-		contract test {
-			function a() public {
-				log2(bytes32(uint256(1)), bytes32(uint256(2)), bytes32(uint256(3)));
-			}
-		}
-	)";
-	ALSO_VIA_YUL(
-		DISABLE_EWASM_TESTRUN()
-
-		compileAndRun(sourceCode);
-		callContractFunction("a()");
-		BOOST_REQUIRE_EQUAL(numLogs(), 1);
-		BOOST_CHECK_EQUAL(logAddress(0), m_contractAddress);
-		BOOST_CHECK_EQUAL(h256(logData(0)), h256(u256(1)));
-		BOOST_REQUIRE_EQUAL(numLogTopics(0), 2);
-		for (unsigned i = 0; i < 2; ++i)
-			BOOST_CHECK_EQUAL(logTopic(0, i), h256(u256(i + 2)));
-	)
-}
-
-BOOST_AUTO_TEST_CASE(log3)
-{
-	char const* sourceCode = R"(
-		contract test {
-			function a() public {
-				log3(bytes32(uint256(1)), bytes32(uint256(2)), bytes32(uint256(3)), bytes32(uint256(4)));
-			}
-		}
-	)";
-	ALSO_VIA_YUL(
-		DISABLE_EWASM_TESTRUN()
-
-		compileAndRun(sourceCode);
-		callContractFunction("a()");
-		BOOST_REQUIRE_EQUAL(numLogs(), 1);
-		BOOST_CHECK_EQUAL(logAddress(0), m_contractAddress);
-		BOOST_CHECK_EQUAL(h256(logData(0)), h256(u256(1)));
-		BOOST_REQUIRE_EQUAL(numLogTopics(0), 3);
-		for (unsigned i = 0; i < 3; ++i)
-			BOOST_CHECK_EQUAL(logTopic(0, i), h256(u256(i + 2)));
-	)
-}
-
-BOOST_AUTO_TEST_CASE(log4)
-{
-	char const* sourceCode = R"(
-		contract test {
-			function a() public {
-				log4(bytes32(uint256(1)), bytes32(uint256(2)), bytes32(uint256(3)), bytes32(uint256(4)), bytes32(uint256(5)));
-			}
-		}
-	)";
-	ALSO_VIA_YUL(
-		DISABLE_EWASM_TESTRUN()
-
-		compileAndRun(sourceCode);
-		callContractFunction("a()");
-		BOOST_REQUIRE_EQUAL(numLogs(), 1);
-		BOOST_CHECK_EQUAL(logAddress(0), m_contractAddress);
-		BOOST_CHECK_EQUAL(h256(logData(0)), h256(u256(1)));
-		BOOST_REQUIRE_EQUAL(numLogTopics(0), 4);
-		for (unsigned i = 0; i < 4; ++i)
-			BOOST_CHECK_EQUAL(logTopic(0, i), h256(u256(i + 2)));
-	)
-}
-
-BOOST_AUTO_TEST_CASE(log_in_constructor)
-{
-	char const* sourceCode = R"(
-		contract test {
-			constructor() {
-				log1(bytes32(uint256(1)), bytes32(uint256(2)));
-			}
-		}
-	)";
-	ALSO_VIA_YUL(
-		DISABLE_EWASM_TESTRUN()
-
-		compileAndRun(sourceCode);
-		BOOST_REQUIRE_EQUAL(numLogs(), 1);
-		BOOST_CHECK_EQUAL(logAddress(0), m_contractAddress);
-		BOOST_CHECK_EQUAL(h256(logData(0)), h256(u256(1)));
-		BOOST_REQUIRE_EQUAL(numLogTopics(0), 1);
-		BOOST_CHECK_EQUAL(logTopic(0, 0), h256(u256(2)));
-	)
-}
-
 BOOST_AUTO_TEST_CASE(selfdestruct)
 {
 	char const* sourceCode = R"(
@@ -1147,9 +1021,9 @@ BOOST_AUTO_TEST_CASE(packed_keccak256_complex_types)
 			uint120[3] x;
 			function f() public returns (bytes32 hash1, bytes32 hash2, bytes32 hash3) {
 				uint120[] memory y = new uint120[](3);
-				x[0] = y[0] = uint120(-2);
-				x[1] = y[1] = uint120(-3);
-				x[2] = y[2] = uint120(-4);
+				x[0] = y[0] = uint120(type(uint).max - 1);
+				x[1] = y[1] = uint120(type(uint).max - 2);
+				x[2] = y[2] = uint120(type(uint).max - 3);
 				hash1 = keccak256(abi.encodePacked(x));
 				hash2 = keccak256(abi.encodePacked(y));
 				hash3 = keccak256(abi.encodePacked(this.f));
@@ -1454,7 +1328,7 @@ BOOST_AUTO_TEST_CASE(contracts_as_addresses)
 		}
 		contract test {
 			helper h;
-			constructor() payable { h = new helper(); address(h).send(5); }
+			constructor() payable { h = new helper(); payable(h).send(5); }
 			function getBalance() public returns (uint256 myBalance, uint256 helperBalance) {
 				myBalance = address(this).balance;
 				helperBalance = address(h).balance;
@@ -1474,8 +1348,11 @@ BOOST_AUTO_TEST_CASE(blockhash)
 			function g() public returns (bool) { counter++; return true; }
 			function f() public returns (bytes32[] memory r) {
 				r = new bytes32[](259);
-				for (uint i = 0; i < 259; i++)
-					r[i] = blockhash(block.number - 257 + i);
+				for (uint i = 0; i < 259; i++) {
+					unchecked {
+						r[i] = blockhash(block.number - 257 + i);
+					}
+				}
 			}
 		}
 	)";
@@ -1544,7 +1421,12 @@ BOOST_AUTO_TEST_CASE(event)
 			function deposit(bytes32 _id, bool _manually) public payable {
 				if (_manually) {
 					bytes32 s = 0x19dacbf83c5de6658e14cbf7bcae5c15eca2eedecf1c66fbca928e4d351bea0f;
-					log3(bytes32(msg.value), s, bytes32(uint256(msg.sender)), _id);
+					uint value = msg.value;
+					address sender = msg.sender;
+					assembly {
+						mstore(0, value)
+						log3(0, 0x20, s, sender, _id)
+					}
 				} else {
 					emit Deposit(msg.sender, _id, msg.value);
 				}
@@ -1597,6 +1479,31 @@ BOOST_AUTO_TEST_CASE(event_emit)
 		BOOST_CHECK_EQUAL(logTopic(0, 2), h256(id));
 	)
 }
+
+BOOST_AUTO_TEST_CASE(event_constructor)
+{
+	char const* sourceCode = R"(
+		contract ClientReceipt {
+			event Deposit(address indexed _from, bytes32 indexed _id, uint _value);
+			constructor() {
+				emit Deposit(msg.sender, bytes32("abc"), 7);
+			}
+		}
+	)";
+	ALSO_VIA_YUL(
+		DISABLE_EWASM_TESTRUN()
+
+		compileAndRun(sourceCode);
+		BOOST_REQUIRE_EQUAL(numLogs(), 1);
+		BOOST_CHECK_EQUAL(logAddress(0), m_contractAddress);
+		BOOST_CHECK_EQUAL(h256(logData(0)), h256(u256(7)));
+		BOOST_REQUIRE_EQUAL(numLogTopics(0), 3);
+		BOOST_CHECK_EQUAL(logTopic(0, 0), util::keccak256(string("Deposit(address,bytes32,uint256)")));
+		BOOST_CHECK_EQUAL(logTopic(0, 1), h256(m_sender, h256::AlignRight));
+		BOOST_CHECK_EQUAL(logTopic(0, 2), h256(string{"abc"}, h256::FromBinary, h256::AlignLeft));
+	)
+}
+
 
 BOOST_AUTO_TEST_CASE(event_no_arguments)
 {
@@ -2130,7 +2037,7 @@ BOOST_AUTO_TEST_CASE(event_indexed_string)
 				for (uint i = 0; i < 90; i++)
 					bytes(x).push(0);
 				for (uint8 i = 0; i < 90; i++)
-					bytes(x)[i] = byte(i);
+					bytes(x)[i] = bytes1(i);
 				y[0] = 4;
 				y[1] = 5;
 				y[2] = 6;
@@ -2317,7 +2224,7 @@ BOOST_AUTO_TEST_CASE(generic_staticcall)
 		ABI_CHECK(callContractFunction("g(address)", c_addressA), encodeArgs(true, 0x40, 0x20, 23 + 42));
 		ABI_CHECK(callContractFunction("h(address)", c_addressA), encodeArgs(false, 0x40, 0x00));
 		ABI_CHECK(callContractFunction("i(address,uint256)", c_addressA, 42), encodeArgs(true, 0x40, 0x20, 42));
-		ABI_CHECK(callContractFunction("i(address,uint256)", c_addressA, 23), encodeArgs(false, 0x40, 0x00));
+		ABI_CHECK(callContractFunction("i(address,uint256)", c_addressA, 23), encodeArgs(false, 0x40, 0x24) + panicData(PanicCode::Assert) + bytes(32 - 4, 0));
 	}
 }
 
@@ -2866,8 +2773,7 @@ BOOST_AUTO_TEST_CASE(invalid_enum_logged)
 	BOOST_REQUIRE_EQUAL(logTopic(0, 0), util::keccak256(string("Log(uint8)")));
 	BOOST_CHECK_EQUAL(h256(logData(0)), h256(u256(0)));
 
-	// should throw
-	ABI_CHECK(callContractFunction("test_log()"), encodeArgs());
+	ABI_CHECK(callContractFunction("test_log()"), panicData(PanicCode::EnumConversionError));
 }
 
 BOOST_AUTO_TEST_CASE(evm_exceptions_in_constructor_out_of_baund)
@@ -2884,7 +2790,7 @@ BOOST_AUTO_TEST_CASE(evm_exceptions_in_constructor_out_of_baund)
 			}
 		}
 	)";
-	ABI_CHECK(compileAndRunWithoutCheck({{"", sourceCode}}, 0, "A"), encodeArgs());
+	ABI_CHECK(compileAndRunWithoutCheck({{"", sourceCode}}, 0, "A"), panicData(PanicCode::ArrayOutOfBounds));
 	BOOST_CHECK(!m_transactionSuccessful);
 }
 
@@ -3234,14 +3140,11 @@ BOOST_AUTO_TEST_CASE(calldata_array_dynamic_three_dimensional)
 					ABI_CHECK(callContractFunction("test(" + arrayType + ",uint256,uint256,uint256)", 0x80, i, j, k, encoding), encodeArgs(data[i][j][k]));
 					ABI_CHECK(callContractFunction("reenc(" + arrayType + ",uint256,uint256,uint256)", 0x80, i, j, k, encoding), encodeArgs(data[i][j][k]));
 				}
-				// out of bounds access
-				ABI_CHECK(callContractFunction("test(" + arrayType + ",uint256,uint256,uint256)", 0x80, i, j, data[i][j].size(), encoding), encodeArgs());
+				ABI_CHECK(callContractFunction("test(" + arrayType + ",uint256,uint256,uint256)", 0x80, i, j, data[i][j].size(), encoding), panicData(PanicCode::ArrayOutOfBounds));
 			}
-			// out of bounds access
-			ABI_CHECK(callContractFunction("test(" + arrayType + ",uint256,uint256)", 0x60, i, data[i].size(), encoding), encodeArgs());
+			ABI_CHECK(callContractFunction("test(" + arrayType + ",uint256,uint256)", 0x60, i, data[i].size(), encoding), panicData(PanicCode::ArrayOutOfBounds));
 		}
-		// out of bounds access
-		ABI_CHECK(callContractFunction("test(" + arrayType + ",uint256)", 0x40, data.size(), encoding), encodeArgs());
+		ABI_CHECK(callContractFunction("test(" + arrayType + ",uint256)", 0x40, data.size(), encoding), panicData(PanicCode::ArrayOutOfBounds));
 	}
 }
 
@@ -3518,9 +3421,9 @@ BOOST_AUTO_TEST_CASE(library_call)
 BOOST_AUTO_TEST_CASE(library_function_external)
 {
 	char const* sourceCode = R"(
-		library Lib { function m(bytes calldata b) external pure returns (byte) { return b[2]; } }
+		library Lib { function m(bytes calldata b) external pure returns (bytes1) { return b[2]; } }
 		contract Test {
-			function f(bytes memory b) public pure returns (byte) {
+			function f(bytes memory b) public pure returns (bytes1) {
 				return Lib.m(b);
 			}
 		}
@@ -3556,7 +3459,7 @@ BOOST_AUTO_TEST_CASE(internal_types_in_library)
 				for (uint i = 0; i < _haystack.length; ++i)
 					if (_haystack[i] == _needle)
 						return i;
-				return uint(-1);
+				return type(uint).max;
 			}
 		}
 		contract Test {
@@ -3883,7 +3786,7 @@ BOOST_AUTO_TEST_CASE(short_strings)
 				if (data1[0] != "1") return 10;
 				if (data1[4] != "4") return 11;
 				for (uint i = 0; i < data1.length; i ++)
-					data1[i] = byte(uint8(i * 3));
+					data1[i] = bytes1(uint8(i * 3));
 				if (uint8(data1[4]) != 4 * 3) return 12;
 				if (uint8(data1[67]) != 67 * 3) return 13;
 				// change length: long -> short
@@ -4737,7 +4640,7 @@ BOOST_AUTO_TEST_CASE(bubble_up_error_messages_through_transfer)
 				revert("message");
 			}
 			function f() public {
-				address(this).transfer(0);
+				payable(this).transfer(0);
 			}
 		}
 		contract C {
@@ -5384,7 +5287,7 @@ BOOST_AUTO_TEST_CASE(abi_encode_with_selector)
 			}
 			function f3() public pure returns (bytes memory) {
 				bytes4 x = 0x12345678;
-				return abi.encodeWithSelector(x, uint(-1));
+				return abi.encodeWithSelector(x, type(uint).max);
 			}
 		}
 	)";
@@ -5416,7 +5319,7 @@ BOOST_AUTO_TEST_CASE(abi_encode_with_selectorv2)
 			}
 			function f3() public pure returns (bytes memory) {
 				bytes4 x = 0x12345678;
-				return abi.encodeWithSelector(x, uint(-1));
+				return abi.encodeWithSelector(x, type(uint).max);
 			}
 			struct S { uint a; string b; uint16 c; }
 			function f4() public pure returns (bytes memory) {
@@ -5425,7 +5328,7 @@ BOOST_AUTO_TEST_CASE(abi_encode_with_selectorv2)
 				s.a = 0x1234567;
 				s.b = "Lorem ipsum dolor sit ethereum........";
 				s.c = 0x1234;
-				return abi.encodeWithSelector(x, uint(-1), s, uint(3));
+				return abi.encodeWithSelector(x, type(uint).max, s, uint(3));
 			}
 		}
 	)";
@@ -5465,10 +5368,10 @@ BOOST_AUTO_TEST_CASE(abi_encode_with_signature)
 			function f2() public pure returns (bytes memory r, uint[] memory ar) {
 				string memory x = "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.";
 				uint[] memory y = new uint[](4);
-				y[0] = uint(-1);
-				y[1] = uint(-2);
-				y[2] = uint(-3);
-				y[3] = uint(-4);
+				y[0] = type(uint).max;
+				y[1] = type(uint).max - 1;
+				y[2] = type(uint).max - 2;
+				y[3] = type(uint).max - 3;
 				r = abi.encodeWithSignature(x, y);
 				// The hash uses temporary memory. This allocation re-uses the memory
 				// and should initialize it properly.
@@ -5509,10 +5412,10 @@ BOOST_AUTO_TEST_CASE(abi_encode_with_signaturev2)
 			function f2() public pure returns (bytes memory r, uint[] memory ar) {
 				string memory x = "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.";
 				uint[] memory y = new uint[](4);
-				y[0] = uint(-1);
-				y[1] = uint(-2);
-				y[2] = uint(-3);
-				y[3] = uint(-4);
+				y[0] = type(uint).max;
+				y[1] = type(uint).max - 1;
+				y[2] = type(uint).max - 2;
+				y[3] = type(uint).max - 3;
 				r = abi.encodeWithSignature(x, y);
 				// The hash uses temporary memory. This allocation re-uses the memory
 				// and should initialize it properly.
@@ -5525,7 +5428,7 @@ BOOST_AUTO_TEST_CASE(abi_encode_with_signaturev2)
 				s.a = 0x1234567;
 				s.b = "Lorem ipsum dolor sit ethereum........";
 				s.c = 0x1234;
-				return abi.encodeWithSignature(s.b, uint(-1), s, uint(3));
+				return abi.encodeWithSignature(s.b, type(uint).max, s, uint(3));
 			}
 		}
 	)T";
@@ -5693,7 +5596,7 @@ BOOST_AUTO_TEST_CASE(dirty_scratch_space_prior_to_constant_optimiser)
 				}
 				uint x = 0x0000000000001234123412431234123412412342112341234124312341234124;
 				// This is just to create many instances of x
-				emit X(x + f() * g(tx.origin) ^ h(block.number));
+				unchecked { emit X(x + f() * g(tx.origin) ^ h(block.number)); }
 				assembly {
 					// make scratch space dirty
 					mstore(0, 0x4242424242424242424242424242424242424242424242424242424242424242)
@@ -5704,10 +5607,10 @@ BOOST_AUTO_TEST_CASE(dirty_scratch_space_prior_to_constant_optimiser)
 				return 0x0000000000001234123412431234123412412342112341234124312341234124;
 			}
 			function g(address a) internal pure returns (uint) {
-				return uint(a) * 0x0000000000001234123412431234123412412342112341234124312341234124;
+				unchecked { return uint(uint160(a)) * 0x0000000000001234123412431234123412412342112341234124312341234124; }
 			}
 			function h(uint a) internal pure returns (uint) {
-				return a * 0x0000000000001234123412431234123412412342112341234124312341234124;
+				unchecked { return a * 0x0000000000001234123412431234123412412342112341234124312341234124; }
 			}
 		}
 	)";

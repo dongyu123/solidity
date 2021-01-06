@@ -1,21 +1,86 @@
-### 0.7.6 (unreleased)
+### 0.8.1 (unreleased)
 
 Language Features:
+ * Possibility to use ``catch Panic(uint code)`` to catch a panic failure from an external call.
+
+Compiler Features:
+ * Optimizer: Add rule to replace ``iszero(sub(x,y))`` by ``eq(x,y)``.
+ * Parser: Report meaningful error if parsing a version pragma failed.
+ * SMTChecker: Support ABI functions as uninterpreted functions.
+ * SMTChecker: Use checked arithmetic by default and support ``unchecked`` blocks.
+ * SMTChecker: Show contract name in counterexample function call.
+
+Bugfixes:
+ * Code Generator: Fix length check when decoding malformed error data in catch clause.
+ * SMTChecker: Fix false negatives in overriding modifiers and functions.
+ * SMTChecker: Fix false negatives when analyzing external function calls.
+ * SMTChecker: Fix missing type constraints for block variables.
+ * SMTChecker: Fix internal error on ``block.chainid``.
+
+### 0.8.0 (2020-12-16)
+
+Breaking Changes:
+ * Code Generator: All arithmetic is checked by default. These checks can be disabled using ``unchecked { ... }``.
+ * Code Generator: Cause a panic if a byte array in storage is accessed whose length is encoded incorrectly.
+ * Code Generator: Use ``revert`` with error signature ``Panic(uint256)`` and error codes instead of invalid opcode on failing assertions.
+ * Command Line Interface: JSON fields `abi`, `devdoc`, `userdoc` and `storage-layout` are now sub-objects rather than strings.
+ * Command Line Interface: Remove the ``--old-reporter`` option.
+ * Command Line Interface: Remove the legacy ``--ast-json`` option. Only the ``--ast-compact-json`` option is supported now.
+ * General: Enable ABI coder v2 by default.
+ * General: Remove global functions ``log0``, ``log1``, ``log2``, ``log3`` and ``log4``.
+ * Parser: Exponentiation is right associative. ``a**b**c`` is parsed as ``a**(b**c)``.
+ * Scanner: Remove support for the ``\b``, ``\f``, and ``\v`` escape sequences.
+ * Standard JSON: Remove the ``legacyAST`` option.
+ * Type Checker: Function call options can only be given once.
+ * Type System: Declarations with the name ``this``, ``super`` and ``_`` are disallowed, with the exception of public functions and events.
+ * Type System: Disallow ``msg.data`` in ``receive()`` function.
+ * Type System: Disallow ``type(super)``.
+ * Type System: Disallow enums with more than 256 members.
+ * Type System: Disallow explicit conversions from negative literals and literals larger than ``type(uint160).max`` to ``address`` type.
+ * Type System: Disallow the ``byte`` type. It was an alias to ``bytes1``.
+ * Type System: Explicit conversion to ``address`` type always returns a non-payable ``address`` type. In particular, ``address(u)``, ``address(b)``, ``address(c)`` and ``address(this)`` have the type ``address`` instead of ``address payable`` (Here ``u``, ``b``, and ``c`` are arbitrary variables of type ``uint160``, ``bytes20`` and contract type respectively.)
+ * Type System: Explicit conversions between two types are disallowed if it changes more than one of sign, width or kind at the same time.
+ * Type System: Explicit conversions from literals to enums are only allowed if the value fits in the enum.
+ * Type System: Explicit conversions from literals to integer type is as strict as implicit conversions.
+ * Type System: Introduce ``address(...).code`` to retrieve the code as ``bytes memory``. The size can be obtained via ``address(...).code.length``, but it will currently always include copying the code.
+ * Type System: Introduce ``block.chainid`` for retrieving the current chain id.
+ * Type System: Support ``address(...).codehash`` to retrieve the codehash of an account.
+ * Type System: The global variables ``tx.origin`` and ``msg.sender`` have type ``address`` instead of ``address payable``.
+ * Type System: Unary negation can only be used on signed integers, not on unsigned integers.
+ * View Pure Checker: Mark ``chainid`` as view.
+ * Yul: Disallow the use of reserved identifiers, such as EVM instructions, even if they are not available in the given dialect / EVM version.
+ * Yul: The ``assignimmutable`` builtin in the "EVM with objects" dialect takes the base offset of the code to modify as an additional argument.
+
+Language Features:
+ * Super constructors can now be called using the member notation e.g. ``M.C(123)``.
+
+Bugfixes:
+ * Type Checker: Perform proper truncating integer arithmetic when using constants in array length expressions.
+
+AST Changes:
+ * New AST Node ``IdentifierPath`` replacing in many places the ``UserDefinedTypeName``.
+ * New AST Node ``UncheckedBlock`` used for ``unchecked { ... }``.
+
+### 0.7.6 (2020-12-16)
+
+Language Features:
+ * Code generator: Support conversion from calldata slices to memory and storage arrays.
  * Code generator: Support copying dynamically encoded structs from calldata to memory.
  * Code generator: Support copying of nested arrays from calldata to memory.
- * Code generator: Support conversion from calldata slices to memory and storage arrays.
+ * Scanner: Generate a parser error when comments or unicode strings contain an unbalanced or underflowing set of unicode direction override markers (LRO, RLO, LRE, RLE, PDF).
  * The fallback function can now also have a single ``calldata`` argument (equaling ``msg.data``) and return ``bytes memory`` (which will not be ABI-encoded but returned as-is).
  * Wasm backend: Add ``i32.select`` and ``i64.select`` instructions.
 
 Compiler Features:
  * Build System: Optionally support dynamic loading of Z3 and use that mechanism for Linux release builds.
  * Code Generator: Avoid memory allocation for default value if it is not used.
+ * SMTChecker: Apply constant evaluation on binary arithmetic expressions.
+ * SMTChecker: Create underflow and overflow verification targets for increment/decrement in the CHC engine.
  * SMTChecker: Report struct values in counterexamples from CHC engine.
  * SMTChecker: Support early returns in the CHC engine.
  * SMTChecker: Support getters.
  * SMTChecker: Support named arguments in function calls.
  * SMTChecker: Support struct constructor.
- * SMTChecker: Create underflow and overflow verification targets for increment/decrement in the CHC engine.
  * Standard-Json: Move the recently introduced ``modelCheckerSettings`` key to ``settings.modelChecker``.
  * Standard-Json: Properly filter the requested output artifacts.
 
@@ -108,7 +173,6 @@ Bugfixes:
 Important Bugfixes:
  * Code Generator: Properly cleanup after copying dynamic-array to storage for packed types.
 
-
 Compiler Features:
  * Code generator: Implemented events with function type as one of its indexed parameters.
  * General: Option to stop compilation after parsing stage. Can be used with ``solc --stop-after parsing``
@@ -129,7 +193,6 @@ Bugfixes:
 
 Important Bugfixes:
  * Type Checker: Disallow two or more free functions with identical name (potentially imported and aliased) and parameter types.
-
 
 Compiler Features:
  * Export compiler-generated utility sources via standard-json or combined-json.

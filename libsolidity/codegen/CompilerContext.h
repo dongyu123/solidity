@@ -36,6 +36,7 @@
 #include <liblangutil/ErrorReporter.h>
 #include <liblangutil/EVMVersion.h>
 #include <libsolutil/Common.h>
+#include <libsolutil/ErrorCodes.h>
 
 #include <libyul/AsmAnalysisInfo.h>
 #include <libyul/backends/evm/EVMDialect.h>
@@ -120,6 +121,9 @@ public:
 	void setMostDerivedContract(ContractDefinition const& _contract) { m_mostDerivedContract = &_contract; }
 	ContractDefinition const& mostDerivedContract() const;
 
+	void setArithmetic(Arithmetic _value) { m_arithmetic = _value; }
+	Arithmetic arithmetic() const { return m_arithmetic; }
+
 	/// @returns the next function in the queue of functions that are still to be compiled
 	/// (i.e. that were referenced during compilation but where we did not yet generate code for).
 	/// Returns nullptr if the queue is empty. Does not remove the function from the queue,
@@ -189,10 +193,10 @@ public:
 	evmasm::AssemblyItem appendJumpToNew() { return m_asm->appendJump().tag(); }
 	/// Appends a JUMP to a tag already on the stack
 	CompilerContext& appendJump(evmasm::AssemblyItem::JumpType _jumpType = evmasm::AssemblyItem::JumpType::Ordinary);
-	/// Appends an INVALID instruction
-	CompilerContext& appendInvalid();
-	/// Appends a conditional INVALID instruction
-	CompilerContext& appendConditionalInvalid();
+	/// Appends code to revert with a Panic(uint256) error.
+	CompilerContext& appendPanic(util::PanicCode _code);
+	/// Appends code to revert with a Panic(uint256) error if the topmost stack element is nonzero.
+	CompilerContext& appendConditionalPanic(util::PanicCode _code);
 	/// Appends a REVERT(0, 0) call
 	/// @param _message is an optional revert message used in debug mode
 	CompilerContext& appendRevert(std::string const& _message = "");
@@ -361,6 +365,8 @@ private:
 	std::map<Declaration const*, std::vector<unsigned>> m_localVariables;
 	/// The contract currently being compiled. Virtual function lookup starts from this contarct.
 	ContractDefinition const* m_mostDerivedContract = nullptr;
+	/// Whether to use checked arithmetic.
+	Arithmetic m_arithmetic = Arithmetic::Checked;
 	/// Stack of current visited AST nodes, used for location attachment
 	std::stack<ASTNode const*> m_visitedNodes;
 	/// The runtime context if in Creation mode, this is used for generating tags that would be stored into the storage and then used at runtime.

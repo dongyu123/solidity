@@ -540,6 +540,25 @@ bool IRGeneratorForStatements::visit(TupleExpression const& _tuple)
 	return false;
 }
 
+bool IRGeneratorForStatements::visit(Block const& _block)
+{
+	if (_block.unchecked())
+	{
+		solAssert(m_context.arithmetic() == Arithmetic::Checked, "");
+		m_context.setArithmetic(Arithmetic::Wrapping);
+	}
+	return true;
+}
+
+void IRGeneratorForStatements::endVisit(Block const& _block)
+{
+	if (_block.unchecked())
+	{
+		solAssert(m_context.arithmetic() == Arithmetic::Wrapping, "");
+		m_context.setArithmetic(Arithmetic::Checked);
+	}
+}
+
 bool IRGeneratorForStatements::visit(IfStatement const& _ifStatement)
 {
 	_ifStatement.condition().accept(*this);
@@ -560,6 +579,12 @@ bool IRGeneratorForStatements::visit(IfStatement const& _ifStatement)
 	m_code << "}\n";
 
 	return false;
+}
+
+void IRGeneratorForStatements::endVisit(PlaceholderStatement const&)
+{
+	solAssert(m_placeholderCallback, "");
+	m_code << m_placeholderCallback();
 }
 
 bool IRGeneratorForStatements::visit(ForStatement const& _forStatement)
@@ -684,11 +709,11 @@ void IRGeneratorForStatements::endVisit(UnaryOperation const& _unaryOperation)
 		else if (op == Token::Sub)
 		{
 			IntegerType const& intType = *dynamic_cast<IntegerType const*>(&resultType);
-			define(_unaryOperation) <<
-				m_utils.negateNumberCheckedFunction(intType) <<
-				"(" <<
-				IRVariable(_unaryOperation.subExpression()).name() <<
-				")\n";
+			define(_unaryOperation) << (
+				m_context.arithmetic() == Arithmetic::Checked ?
+				m_utils.negateNumberCheckedFunction(intType) :
+				m_utils.negateNumberWrappingFunction(intType)
+			) << "(" << IRVariable(_unaryOperation.subExpression()).name() << ")\n";
 		}
 		else
 			solUnimplementedAssert(false, "Unary operator not yet implemented");
@@ -900,17 +925,17 @@ void IRGeneratorForStatements::endVisit(FunctionCall const& _functionCall)
 				solAssert(*identifier->annotation().requiredLookup == VirtualLookup::Virtual, "");
 				functionDef = &functionDef->resolveVirtual(m_context.mostDerivedContract());
 			}
-			else
-			{
-				ContractType const* type = dynamic_cast<ContractType const*>(memberAccess->expression().annotation().type);
-				if (type && type->isSuper())
+			else if (auto typeType = dynamic_cast<TypeType const*>(memberAccess->expression().annotation().type))
+				if (
+					auto contractType = dynamic_cast<ContractType const*>(typeType->actualType());
+					contractType->isSuper()
+				)
 				{
-					ContractDefinition const* super = type->contractDefinition().superContract(m_context.mostDerivedContract());
+					ContractDefinition const* super = contractType->contractDefinition().superContract(m_context.mostDerivedContract());
 					solAssert(super, "Super contract not available.");
 					solAssert(*memberAccess->annotation().requiredLookup == VirtualLookup::Super, "");
 					functionDef = &functionDef->resolveVirtual(m_context.mostDerivedContract(), super);
 				}
-			}
 
 			solAssert(functionDef && functionDef->isImplemented(), "");
 			solAssert(
@@ -1316,7 +1341,7 @@ void IRGeneratorForStatements::endVisit(FunctionCall const& _functionCall)
 		define(modulus, *arguments[2]);
 		Whiskers templ("if iszero(<modulus>) { <panic>() }\n");
 		templ("modulus", modulus.name());
-		templ("panic", m_utils.panicFunction());
+		templ("panic", m_utils.panicFunction(PanicCode::DivisionByZero));
 		m_code << templ.render();
 
 		string args;
@@ -1341,34 +1366,6 @@ void IRGeneratorForStatements::endVisit(FunctionCall const& _functionCall)
 		for (size_t i = 0; i < arguments.size(); ++i)
 			args += (args.empty() ? "" : ", ") + expressionAsType(*arguments[i], *(parameterTypes[i]));
 		define(_functionCall) << functions[functionType->kind()] << "(" << args << ")\n";
-		break;
-	}
-	case FunctionType::Kind::Log0:
-	case FunctionType::Kind::Log1:
-	case FunctionType::Kind::Log2:
-	case FunctionType::Kind::Log3:
-	case FunctionType::Kind::Log4:
-	{
-		unsigned logNumber = static_cast<unsigned>(functionType->kind()) - static_cast<unsigned>(FunctionType::Kind::Log0);
-		solAssert(arguments.size() == logNumber + 1, "");
-		ABIFunctions abi(m_context.evmVersion(), m_context.revertStrings(), m_context.functionCollector());
-		string indexedArgs;
-		for (unsigned arg = 0; arg < logNumber; ++arg)
-			indexedArgs += ", " + expressionAsType(*arguments[arg + 1], *(parameterTypes[arg + 1]));
-		Whiskers templ(R"({
-			let <pos> := <freeMemory>
-			let <end> := <encode>(<pos>, <nonIndexedArgs>)
-			<log>(<pos>, sub(<end>, <pos>) <indexedArgs>)
-		})");
-		templ("pos", m_context.newYulVariable());
-		templ("end", m_context.newYulVariable());
-		templ("freeMemory", freeMemory());
-		templ("encode", abi.tupleEncoder({arguments.front()->annotation().type}, {parameterTypes.front()}));
-		templ("nonIndexedArgs", IRVariable(*arguments.front()).commaSeparatedList());
-		templ("log", "log" + to_string(logNumber));
-		templ("indexedArgs", indexedArgs);
-		m_code << templ.render();
-
 		break;
 	}
 	case FunctionType::Kind::Creation:
@@ -1414,7 +1411,7 @@ void IRGeneratorForStatements::endVisit(FunctionCall const& _functionCall)
 		t("allocateTemporaryMemory", m_utils.allocationTemporaryMemoryFunction());
 		t("releaseTemporaryMemory", m_utils.releaseTemporaryMemoryFunction());
 		t("object", IRNames::creationObject(*contract));
-		t("panic", m_utils.panicFunction());
+		t("panic", m_utils.panicFunction(PanicCode::ResourceError));
 		t("abiEncode",
 			m_context.abiFunctions().tupleEncoder(argumentTypes, functionType->parameterTypes(), false)
 		);
@@ -1599,21 +1596,8 @@ void IRGeneratorForStatements::endVisit(MemberAccess const& _memberAccess)
 	{
 		ContractType const& type = dynamic_cast<ContractType const&>(*_memberAccess.expression().annotation().type);
 		if (type.isSuper())
-		{
-			solAssert(!!_memberAccess.annotation().referencedDeclaration, "Referenced declaration not resolved.");
-			ContractDefinition const* super = type.contractDefinition().superContract(m_context.mostDerivedContract());
-			solAssert(super, "Super contract not available.");
-			FunctionDefinition const& resolvedFunctionDef = dynamic_cast<FunctionDefinition const&>(
-				*_memberAccess.annotation().referencedDeclaration
-			).resolveVirtual(m_context.mostDerivedContract(), super);
+			solAssert(false, "");
 
-			define(_memberAccess) << to_string(resolvedFunctionDef.id()) << "\n";
-			solAssert(resolvedFunctionDef.functionType(true), "");
-			solAssert(resolvedFunctionDef.functionType(true)->kind() == FunctionType::Kind::Internal, "");
-
-			if (!_memberAccess.annotation().calledDirectly)
-				m_context.addToInternalDispatch(resolvedFunctionDef);
-		}
 		// ordinary contract type
 		else if (Declaration const* declaration = _memberAccess.annotation().referencedDeclaration)
 		{
@@ -1642,6 +1626,17 @@ void IRGeneratorForStatements::endVisit(MemberAccess const& _memberAccess)
 		if (member == "balance")
 			define(_memberAccess) <<
 				"balance(" <<
+				expressionAsType(_memberAccess.expression(), *TypeProvider::address()) <<
+				")\n";
+		else if (member == "code")
+			define(_memberAccess) <<
+				m_utils.externalCodeFunction() <<
+				"(" <<
+				expressionAsType(_memberAccess.expression(), *TypeProvider::address()) <<
+				")\n";
+		else if (member == "codehash")
+			define(_memberAccess) <<
+				"extcodehash(" <<
 				expressionAsType(_memberAccess.expression(), *TypeProvider::address()) <<
 				")\n";
 		else if (set<string>{"send", "transfer"}.count(member))
@@ -1705,6 +1700,8 @@ void IRGeneratorForStatements::endVisit(MemberAccess const& _memberAccess)
 			define(_memberAccess) << "origin()\n";
 		else if (member == "gasprice")
 			define(_memberAccess) << "gasprice()\n";
+		else if (member == "chainid")
+			define(_memberAccess) << "chainid()\n";
 		else if (member == "data")
 		{
 			IRVariable var(_memberAccess);
@@ -1723,7 +1720,9 @@ void IRGeneratorForStatements::endVisit(MemberAccess const& _memberAccess)
 		else if (member == "creationCode" || member == "runtimeCode")
 		{
 			TypePointer arg = dynamic_cast<MagicType const&>(*_memberAccess.expression().annotation().type).typeArgument();
-			ContractDefinition const& contract = dynamic_cast<ContractType const&>(*arg).contractDefinition();
+			auto const& contractType = dynamic_cast<ContractType const&>(*arg);
+			solAssert(!contractType.isSuper(), "");
+			ContractDefinition const& contract = contractType.contractDefinition();
 			m_context.subObjectsCreated().insert(&contract);
 			m_code << Whiskers(R"(
 				let <size> := datasize("<objectName>")
@@ -1738,12 +1737,16 @@ void IRGeneratorForStatements::endVisit(MemberAccess const& _memberAccess)
 		}
 		else if (member == "name")
 		{
-			solUnimplementedAssert(false, "");
+			TypePointer arg = dynamic_cast<MagicType const&>(*_memberAccess.expression().annotation().type).typeArgument();
+			ContractDefinition const& contract = dynamic_cast<ContractType const&>(*arg).contractDefinition();
+			define(IRVariable(_memberAccess)) << m_utils.copyLiteralToMemoryFunction(contract.name()) << "()\n";
 		}
 		else if (member == "interfaceId")
 		{
 			TypePointer arg = dynamic_cast<MagicType const&>(*_memberAccess.expression().annotation().type).typeArgument();
-			ContractDefinition const& contract = dynamic_cast<ContractType const&>(*arg).contractDefinition();
+			auto const& contractType = dynamic_cast<ContractType const&>(*arg);
+			solAssert(!contractType.isSuper(), "");
+			ContractDefinition const& contract = contractType.contractDefinition();
 			define(_memberAccess) << formatNumber(u256{contract.interfaceId()} << (256 - 32)) << "\n";
 		}
 		else if (member == "min" || member == "max")
@@ -1867,8 +1870,25 @@ void IRGeneratorForStatements::endVisit(MemberAccess const& _memberAccess)
 
 		if (actualType.category() == Type::Category::Contract)
 		{
-			if (auto const* variable = dynamic_cast<VariableDeclaration const*>(_memberAccess.annotation().referencedDeclaration))
-				handleVariableReference(*variable, _memberAccess);
+			ContractType const& contractType = dynamic_cast<ContractType const&>(actualType);
+			if (contractType.isSuper())
+			{
+				solAssert(!!_memberAccess.annotation().referencedDeclaration, "Referenced declaration not resolved.");
+				ContractDefinition const* super = contractType.contractDefinition().superContract(m_context.mostDerivedContract());
+				solAssert(super, "Super contract not available.");
+				FunctionDefinition const& resolvedFunctionDef =
+					dynamic_cast<FunctionDefinition const&>(
+						*_memberAccess.annotation().referencedDeclaration
+					).resolveVirtual(m_context.mostDerivedContract(), super);
+
+				define(_memberAccess) << to_string(resolvedFunctionDef.id()) << "\n";
+				solAssert(resolvedFunctionDef.functionType(true), "");
+				solAssert(resolvedFunctionDef.functionType(true)->kind() == FunctionType::Kind::Internal, "");
+				if (!_memberAccess.annotation().calledDirectly)
+					m_context.addToInternalDispatch(resolvedFunctionDef);
+			}
+			else if (auto const* variable = dynamic_cast<VariableDeclaration const*>(_memberAccess.annotation().referencedDeclaration))
+					handleVariableReference(*variable, _memberAccess);
 			else if (memberFunctionType)
 			{
 				switch (memberFunctionType->kind())
@@ -1890,7 +1910,7 @@ void IRGeneratorForStatements::endVisit(MemberAccess const& _memberAccess)
 						dynamic_cast<EventDefinition const*>(_memberAccess.annotation().referencedDeclaration),
 						"Event not found"
 					);
-					// the call will do the resolving
+						// the call will do the resolving
 					break;
 				case FunctionType::Kind::DelegateCall:
 					define(IRVariable(_memberAccess).part("address"), _memberAccess.expression());
@@ -1904,11 +1924,6 @@ void IRGeneratorForStatements::endVisit(MemberAccess const& _memberAccess)
 				case FunctionType::Kind::BareDelegateCall:
 				case FunctionType::Kind::BareStaticCall:
 				case FunctionType::Kind::Transfer:
-				case FunctionType::Kind::Log0:
-				case FunctionType::Kind::Log1:
-				case FunctionType::Kind::Log2:
-				case FunctionType::Kind::Log3:
-				case FunctionType::Kind::Log4:
 				case FunctionType::Kind::ECRecover:
 				case FunctionType::Kind::SHA256:
 				case FunctionType::Kind::RIPEMD160:
@@ -1918,7 +1933,7 @@ void IRGeneratorForStatements::endVisit(MemberAccess const& _memberAccess)
 			}
 			else if (dynamic_cast<TypeType const*>(_memberAccess.annotation().type))
 			{
-				// no-op
+			// no-op
 			}
 			else
 				// The old code generator had a generic "else" case here
@@ -2107,7 +2122,7 @@ void IRGeneratorForStatements::endVisit(IndexAccess const& _indexAccess)
 		)")
 		("index", index.name())
 		("length", to_string(fixedBytesType.numBytes()))
-		("panic", m_utils.panicFunction())
+		("panic", m_utils.panicFunction(PanicCode::ArrayOutOfBounds))
 		("array", IRVariable(_indexAccess.baseExpression()).name())
 		("shl248", m_utils.shiftLeftFunction(256 - 8))
 		("result", IRVariable(_indexAccess).name())
@@ -2179,18 +2194,20 @@ void IRGeneratorForStatements::endVisit(Identifier const& _identifier)
 		switch (magicVar->type()->category())
 		{
 		case Type::Category::Contract:
-			if (dynamic_cast<ContractType const&>(*magicVar->type()).isSuper())
-				solAssert(_identifier.name() == "super", "");
-			else
-			{
-				solAssert(_identifier.name() == "this", "");
-				define(_identifier) << "address()\n";
-			}
+			solAssert(_identifier.name() == "this", "");
+			define(_identifier) << "address()\n";
 			break;
 		case Type::Category::Integer:
 			solAssert(_identifier.name() == "now", "");
 			define(_identifier) << "timestamp()\n";
 			break;
+		case Type::Category::TypeType:
+		{
+			auto typeType = dynamic_cast<TypeType const*>(magicVar->type());
+			if (auto contractType = dynamic_cast<ContractType const*>(typeType->actualType()))
+				solAssert(!contractType->isSuper() || _identifier.name() == "super", "");
+			break;
+		}
 		default:
 			break;
 		}
@@ -2654,22 +2671,23 @@ string IRGeneratorForStatements::binaryOperation(
 	{
 		IntegerType const* type = dynamic_cast<IntegerType const*>(&_type);
 		solAssert(type, "");
+		bool checked = m_context.arithmetic() == Arithmetic::Checked;
 		switch (_operator)
 		{
 		case Token::Add:
-			fun = m_utils.overflowCheckedIntAddFunction(*type);
+			fun = checked ? m_utils.overflowCheckedIntAddFunction(*type) : m_utils.wrappingIntAddFunction(*type);
 			break;
 		case Token::Sub:
-			fun = m_utils.overflowCheckedIntSubFunction(*type);
+			fun = checked ? m_utils.overflowCheckedIntSubFunction(*type) : m_utils.wrappingIntSubFunction(*type);
 			break;
 		case Token::Mul:
-			fun = m_utils.overflowCheckedIntMulFunction(*type);
+			fun = checked ? m_utils.overflowCheckedIntMulFunction(*type) : m_utils.wrappingIntMulFunction(*type);
 			break;
 		case Token::Div:
-			fun = m_utils.overflowCheckedIntDivFunction(*type);
+			fun = checked ? m_utils.overflowCheckedIntDivFunction(*type) : m_utils.wrappingIntDivFunction(*type);
 			break;
 		case Token::Mod:
-			fun = m_utils.checkedIntModFunction(*type);
+			fun = m_utils.intModFunction(*type);
 			break;
 		default:
 			break;
@@ -2953,46 +2971,53 @@ bool IRGeneratorForStatements::visit(TryStatement const& _tryStatement)
 
 void IRGeneratorForStatements::handleCatch(TryStatement const& _tryStatement)
 {
-	if (_tryStatement.structuredClause())
-		handleCatchStructuredAndFallback(*_tryStatement.structuredClause(), _tryStatement.fallbackClause());
-	else if (_tryStatement.fallbackClause())
-		handleCatchFallback(*_tryStatement.fallbackClause());
-	else
-		rethrow();
-}
+	string const runFallback = m_context.newYulVariable();
+	m_code << "let " << runFallback << " := 1\n";
 
-void IRGeneratorForStatements::handleCatchStructuredAndFallback(
-	TryCatchClause const& _structured,
-	TryCatchClause const* _fallback
-)
-{
-	solAssert(
-		_structured.parameters() &&
-		_structured.parameters()->parameters().size() == 1 &&
-		_structured.parameters()->parameters().front() &&
-		*_structured.parameters()->parameters().front()->annotation().type == *TypeProvider::stringMemory(),
-		""
-	);
-	solAssert(m_context.evmVersion().supportsReturndata(), "");
+	// This function returns zero on "short returndata". We have to add a success flag
+	// once we implement custom error codes.
+	if (_tryStatement.errorClause() || _tryStatement.panicClause())
+		m_code << "switch " << m_utils.returnDataSelectorFunction() << "()\n";
 
-	// Try to decode the error message.
-	// If this fails, leaves 0 on the stack, otherwise the pointer to the data string.
-	string const dataVariable = m_context.newYulVariable();
-
-	m_code << "let " << dataVariable << " := " << m_utils.tryDecodeErrorMessageFunction() << "()\n";
-	m_code << "switch iszero(" << dataVariable << ") \n";
-	m_code << "case 0 { // decoding success\n";
-	if (_structured.parameters())
+	if (TryCatchClause const* errorClause = _tryStatement.errorClause())
 	{
-		solAssert(_structured.parameters()->parameters().size() == 1, "");
-		IRVariable const& var = m_context.addLocalVariable(*_structured.parameters()->parameters().front());
-		define(var) << dataVariable << "\n";
+		m_code << "case " << selectorFromSignature32("Error(string)") << " {\n";
+		string const dataVariable = m_context.newYulVariable();
+		m_code << "let " << dataVariable << " := " << m_utils.tryDecodeErrorMessageFunction() << "()\n";
+		m_code << "if " << dataVariable << " {\n";
+		m_code << runFallback << " := 0\n";
+		if (errorClause->parameters())
+		{
+			solAssert(errorClause->parameters()->parameters().size() == 1, "");
+			IRVariable const& var = m_context.addLocalVariable(*errorClause->parameters()->parameters().front());
+			define(var) << dataVariable << "\n";
+		}
+		errorClause->accept(*this);
+		m_code << "}\n";
+		m_code << "}\n";
 	}
-	_structured.accept(*this);
-	m_code << "}\n";
-	m_code << "default { // decoding failure\n";
-	if (_fallback)
-		handleCatchFallback(*_fallback);
+	if (TryCatchClause const* panicClause = _tryStatement.panicClause())
+	{
+		m_code << "case " << selectorFromSignature32("Panic(uint256)") << " {\n";
+		string const success = m_context.newYulVariable();
+		string const code = m_context.newYulVariable();
+		m_code << "let " << success << ", " << code << " := " << m_utils.tryDecodePanicDataFunction() << "()\n";
+		m_code << "if " << success << " {\n";
+		m_code << runFallback << " := 0\n";
+		if (panicClause->parameters())
+		{
+			solAssert(panicClause->parameters()->parameters().size() == 1, "");
+			IRVariable const& var = m_context.addLocalVariable(*panicClause->parameters()->parameters().front());
+			define(var) << code << "\n";
+		}
+		panicClause->accept(*this);
+		m_code << "}\n";
+		m_code << "}\n";
+	}
+
+	m_code << "if " << runFallback << " {\n";
+	if (_tryStatement.fallbackClause())
+		handleCatchFallback(*_tryStatement.fallbackClause());
 	else
 		rethrow();
 	m_code << "}\n";

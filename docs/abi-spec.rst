@@ -109,13 +109,14 @@ them.
 +-------------------------------+-----------------------------------------------------------------------------+
 |:ref:`contract<contracts>`     |``address``                                                                  |
 +-------------------------------+-----------------------------------------------------------------------------+
-|:ref:`enum<enums>`             |smallest ``uint`` type that is large enough to hold all values               |
-|                               |                                                                             |
-|                               |For example, an ``enum`` of 256 values or less is mapped to ``uint8`` and    |
-|                               |an ``enum`` of more than 256 values is mapped to ``uint16``.                 |
+|:ref:`enum<enums>`             |``uint8``                                                                    |
 +-------------------------------+-----------------------------------------------------------------------------+
 |:ref:`struct<structs>`         |``tuple``                                                                    |
 +-------------------------------+-----------------------------------------------------------------------------+
+
+.. warning::
+    Before version ``0.8.0`` enums could have more than 256 members and were represented by the
+    smallest integer type just big enough to hold the value of any member.
 
 Design Criteria for the Encoding
 ================================
@@ -236,7 +237,7 @@ Given the contract:
 ::
 
     // SPDX-License-Identifier: GPL-3.0
-    pragma solidity >=0.4.16 <0.8.0;
+    pragma solidity >=0.4.16 <0.9.0;
 
     contract Foo {
         function bar(bytes3[2] memory) public pure {}
@@ -540,7 +541,7 @@ For example,
 ::
 
     // SPDX-License-Identifier: GPL-3.0
-    pragma solidity ^0.7.0;
+    pragma solidity >=0.7.0 <0.9.0;
 
 
     contract Test {
@@ -589,7 +590,7 @@ As an example, the code
 ::
 
     // SPDX-License-Identifier: GPL-3.0
-    pragma solidity >0.7.4;
+    pragma solidity >0.7.4 <0.9.0;
     pragma abicoder v2;
 
     contract Test {

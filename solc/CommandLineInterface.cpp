@@ -51,7 +51,6 @@
 #include <liblangutil/Exceptions.h>
 #include <liblangutil/Scanner.h>
 #include <liblangutil/SourceReferenceFormatter.h>
-#include <liblangutil/SourceReferenceFormatterHuman.h>
 
 #include <libsmtutil/Exceptions.h>
 
@@ -207,7 +206,6 @@ static string const g_strIgnoreMissingFiles = "ignore-missing";
 static string const g_strColor = "color";
 static string const g_strNoColor = "no-color";
 static string const g_strErrorIds = "error-codes";
-static string const g_strOldReporter = "old-reporter";
 
 static string const g_argAbi = g_strAbi;
 static string const g_argPrettyJson = g_strPrettyJson;
@@ -260,7 +258,6 @@ static string const g_argIgnoreMissingFiles = g_strIgnoreMissingFiles;
 static string const g_argColor = g_strColor;
 static string const g_argNoColor = g_strNoColor;
 static string const g_argErrorIds = g_strErrorIds;
-static string const g_argOldReporter = g_strOldReporter;
 
 /// Possible arguments to for --combined-json
 static set<string> const g_combinedJsonArgs
@@ -975,10 +972,6 @@ General Information)").c_str(),
 			g_argErrorIds.c_str(),
 			"Output error codes."
 		)
-		(
-			g_argOldReporter.c_str(),
-			"Enables old diagnostics reporter (legacy option, will be removed)."
-		)
 	;
 	desc.add(outputFormatting);
 
@@ -1498,11 +1491,7 @@ bool CommandLineInterface::processInput()
 
 	m_compiler = make_unique<CompilerStack>(fileReader);
 
-	unique_ptr<SourceReferenceFormatter> formatter;
-	if (m_args.count(g_argOldReporter))
-		formatter = make_unique<SourceReferenceFormatter>(serr(false));
-	else
-		formatter = make_unique<SourceReferenceFormatterHuman>(serr(false), m_coloredOutput, m_withErrorIds);
+	SourceReferenceFormatter formatter(serr(false), m_coloredOutput, m_withErrorIds);
 
 	try
 	{
@@ -1562,7 +1551,7 @@ bool CommandLineInterface::processInput()
 				if (!m_compiler->analyze())
 				{
 					for (auto const& error: m_compiler->errors())
-						formatter->printErrorInformation(*error);
+						formatter.printErrorInformation(*error);
 					astAssert(false, "Analysis of the AST failed");
 				}
 			}
@@ -1584,7 +1573,7 @@ bool CommandLineInterface::processInput()
 		for (auto const& error: m_compiler->errors())
 		{
 			g_hasOutput = true;
-			formatter->printErrorInformation(*error);
+			formatter.printErrorInformation(*error);
 		}
 
 		if (!successful)
@@ -1598,7 +1587,7 @@ bool CommandLineInterface::processInput()
 	catch (CompilerError const& _exception)
 	{
 		g_hasOutput = true;
-		formatter->printExceptionInformation(_exception, "Compiler error");
+		formatter.printExceptionInformation(_exception, "Compiler error");
 		return false;
 	}
 	catch (InternalCompilerError const& _exception)
@@ -1632,7 +1621,7 @@ bool CommandLineInterface::processInput()
 		else
 		{
 			g_hasOutput = true;
-			formatter->printExceptionInformation(_error, _error.typeName());
+			formatter.printExceptionInformation(_error, _error.typeName());
 		}
 
 		return false;
@@ -1676,7 +1665,7 @@ void CommandLineInterface::handleCombinedJSON()
 	{
 		Json::Value& contractData = output[g_strContracts][contractName] = Json::objectValue;
 		if (requests.count(g_strAbi))
-			contractData[g_strAbi] = jsonCompactPrint(m_compiler->contractABI(contractName));
+			contractData[g_strAbi] = m_compiler->contractABI(contractName);
 		if (requests.count("metadata"))
 			contractData["metadata"] = m_compiler->metadata(contractName);
 		if (requests.count(g_strBinary) && m_compiler->compilationSuccessful())
@@ -1688,7 +1677,7 @@ void CommandLineInterface::handleCombinedJSON()
 		if (requests.count(g_strAsm) && m_compiler->compilationSuccessful())
 			contractData[g_strAsm] = m_compiler->assemblyJSON(contractName);
 		if (requests.count(g_strStorageLayout) && m_compiler->compilationSuccessful())
-			contractData[g_strStorageLayout] = jsonCompactPrint(m_compiler->storageLayout(contractName));
+			contractData[g_strStorageLayout] = m_compiler->storageLayout(contractName);
 		if (requests.count(g_strGeneratedSources) && m_compiler->compilationSuccessful())
 			contractData[g_strGeneratedSources] = m_compiler->generatedSources(contractName, false);
 		if (requests.count(g_strGeneratedSourcesRuntime) && m_compiler->compilationSuccessful())
@@ -1706,9 +1695,9 @@ void CommandLineInterface::handleCombinedJSON()
 		if (requests.count(g_strSignatureHashes))
 			contractData[g_strSignatureHashes] = m_compiler->methodIdentifiers(contractName);
 		if (requests.count(g_strNatspecDev))
-			contractData[g_strNatspecDev] = jsonCompactPrint(m_compiler->natspecDev(contractName));
+			contractData[g_strNatspecDev] = m_compiler->natspecDev(contractName);
 		if (requests.count(g_strNatspecUser))
-			contractData[g_strNatspecUser] = jsonCompactPrint(m_compiler->natspecUser(contractName));
+			contractData[g_strNatspecUser] = m_compiler->natspecUser(contractName);
 	}
 
 	bool needsSourceList = requests.count(g_strAst) || requests.count(g_strSrcMap) || requests.count(g_strSrcMapRuntime);
@@ -1723,11 +1712,10 @@ void CommandLineInterface::handleCombinedJSON()
 
 	if (requests.count(g_strAst))
 	{
-		bool legacyFormat = !requests.count(g_strCompactJSON);
 		output[g_strSources] = Json::Value(Json::objectValue);
 		for (auto const& sourceCode: m_sourceCodes)
 		{
-			ASTJsonConverter converter(legacyFormat, m_compiler->state(), m_compiler->sourceIndices());
+			ASTJsonConverter converter(m_compiler->state(), m_compiler->sourceIndices());
 			output[g_strSources][sourceCode.first] = Json::Value(Json::objectValue);
 			output[g_strSources][sourceCode.first]["AST"] = converter.toJson(m_compiler->ast(sourceCode.first));
 		}
@@ -1742,45 +1730,34 @@ void CommandLineInterface::handleCombinedJSON()
 		sout() << json << endl;
 }
 
-void CommandLineInterface::handleAst(string const& _argStr)
+void CommandLineInterface::handleAst()
 {
-	string title;
+	if (!m_args.count(g_argAstCompactJson))
+		return;
 
-	if (_argStr == g_argAstJson)
-		title = "JSON AST:";
-	else if (_argStr == g_argAstCompactJson)
-		title = "JSON AST (compact format):";
-	else
-		BOOST_THROW_EXCEPTION(InternalCompilerError() << errinfo_comment("Illegal argStr for AST"));
+	vector<ASTNode const*> asts;
+	for (auto const& sourceCode: m_sourceCodes)
+		asts.push_back(&m_compiler->ast(sourceCode.first));
 
-	// do we need AST output?
-	if (m_args.count(_argStr))
+	if (m_args.count(g_argOutputDir))
 	{
-		vector<ASTNode const*> asts;
 		for (auto const& sourceCode: m_sourceCodes)
-			asts.push_back(&m_compiler->ast(sourceCode.first));
-
-		bool legacyFormat = !m_args.count(g_argAstCompactJson);
-		if (m_args.count(g_argOutputDir))
 		{
-			for (auto const& sourceCode: m_sourceCodes)
-			{
-				stringstream data;
-				string postfix = "";
-				ASTJsonConverter(legacyFormat, m_compiler->state(), m_compiler->sourceIndices()).print(data, m_compiler->ast(sourceCode.first));
-				postfix += "_json";
-				boost::filesystem::path path(sourceCode.first);
-				createFile(path.filename().string() + postfix + ".ast", data.str());
-			}
+			stringstream data;
+			string postfix = "";
+			ASTJsonConverter(m_compiler->state(), m_compiler->sourceIndices()).print(data, m_compiler->ast(sourceCode.first));
+			postfix += "_json";
+			boost::filesystem::path path(sourceCode.first);
+			createFile(path.filename().string() + postfix + ".ast", data.str());
 		}
-		else
+	}
+	else
+	{
+		sout() << "JSON AST (compact format):" << endl << endl;
+		for (auto const& sourceCode: m_sourceCodes)
 		{
-			sout() << title << endl << endl;
-			for (auto const& sourceCode: m_sourceCodes)
-			{
-				sout() << endl << "======= " << sourceCode.first << " =======" << endl;
-				ASTJsonConverter(legacyFormat, m_compiler->state(), m_compiler->sourceIndices()).print(sout(), m_compiler->ast(sourceCode.first));
-			}
+			sout() << endl << "======= " << sourceCode.first << " =======" << endl;
+			ASTJsonConverter(m_compiler->state(), m_compiler->sourceIndices()).print(sout(), m_compiler->ast(sourceCode.first));
 		}
 	}
 }
@@ -1832,7 +1809,7 @@ void CommandLineInterface::handleBoogie()
 	ASTBoogieConverter boogieConverter(context);
 	EmitsChecker emitsChecker(context);
 
-	SourceReferenceFormatter formatter(serr(false));
+	SourceReferenceFormatter formatter(serr(false), m_coloredOutput, m_withErrorIds);
 
 	for (auto const& sourceCode: m_sourceCodes)
 	{
@@ -2046,16 +2023,12 @@ bool CommandLineInterface::assemble(
 	for (auto const& sourceAndStack: assemblyStacks)
 	{
 		auto const& stack = sourceAndStack.second;
-		unique_ptr<SourceReferenceFormatter> formatter;
-		if (m_args.count(g_argOldReporter))
-			formatter = make_unique<SourceReferenceFormatter>(serr(false));
-		else
-			formatter = make_unique<SourceReferenceFormatterHuman>(serr(false), m_coloredOutput, m_withErrorIds);
+		SourceReferenceFormatter formatter(serr(false), m_coloredOutput, m_withErrorIds);
 
 		for (auto const& error: stack.errors())
 		{
 			g_hasOutput = true;
-			formatter->printErrorInformation(*error);
+			formatter.printErrorInformation(*error);
 		}
 		if (!Error::containsOnlyWarnings(stack.errors()))
 			successful = false;
@@ -2153,8 +2126,7 @@ void CommandLineInterface::outputCompilationResults()
 	handleCombinedJSON();
 
 	// do we need AST output?
-	handleAst(g_argAstJson);
-	handleAst(g_argAstCompactJson);
+	handleAst();
 	if (m_args.count(g_argAstBoogie))
 		handleBoogie();
 

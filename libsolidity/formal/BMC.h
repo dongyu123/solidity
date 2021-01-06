@@ -73,7 +73,7 @@ public:
 	std::vector<std::string> unhandledQueries() { return m_interface->unhandledQueries(); }
 
 	/// @returns true if _funCall should be inlined, otherwise false.
-	static bool shouldInlineFunctionCall(FunctionCall const& _funCall);
+	static bool shouldInlineFunctionCall(FunctionCall const& _funCall, ContractDefinition const* _contract);
 
 private:
 	/// AST visitors.
@@ -130,11 +130,11 @@ private:
 		std::pair<std::vector<smtutil::Expression>, std::vector<std::string>> modelExpressions;
 	};
 
-	void checkVerificationTargets(smtutil::Expression const& _constraints);
-	void checkVerificationTarget(BMCVerificationTarget& _target, smtutil::Expression const& _constraints = smtutil::Expression(true));
+	void checkVerificationTargets();
+	void checkVerificationTarget(BMCVerificationTarget& _target);
 	void checkConstantCondition(BMCVerificationTarget& _target);
-	void checkUnderflow(BMCVerificationTarget& _target, smtutil::Expression const& _constraints);
-	void checkOverflow(BMCVerificationTarget& _target, smtutil::Expression const& _constraints);
+	void checkUnderflow(BMCVerificationTarget& _target);
+	void checkOverflow(BMCVerificationTarget& _target);
 	void checkDivByZero(BMCVerificationTarget& _target);
 	void checkBalance(BMCVerificationTarget& _target);
 	void checkAssert(BMCVerificationTarget& _target);

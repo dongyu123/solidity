@@ -109,6 +109,26 @@ pair<YulString, BuiltinFunctionForEVM> createFunction(
 	return {name, f};
 }
 
+set<YulString> createReservedIdentifiers()
+{
+	set<YulString> reserved;
+	for (auto const& instr: evmasm::c_instructions)
+	{
+		string name = instr.first;
+		transform(name.begin(), name.end(), name.begin(), [](unsigned char _c) { return tolower(_c); });
+		reserved.emplace(name);
+	}
+	reserved += vector<YulString>{
+		"linkersymbol"_yulstring,
+		"datasize"_yulstring,
+		"dataoffset"_yulstring,
+		"datacopy"_yulstring,
+		"setimmutable"_yulstring,
+		"loadimmutable"_yulstring,
+	};
+	return reserved;
+}
+
 map<YulString, BuiltinFunctionForEVM> createBuiltins(langutil::EVMVersion _evmVersion, bool _objectAccess)
 {
 	map<YulString, BuiltinFunctionForEVM> builtins;
@@ -221,21 +241,22 @@ map<YulString, BuiltinFunctionForEVM> createBuiltins(langutil::EVMVersion _evmVe
 		));
 		builtins.emplace(createFunction(
 			"setimmutable",
-			2,
+			3,
 			0,
 			SideEffects{false, false, false, false, true, SideEffects::None, SideEffects::None, SideEffects::Write},
-			{LiteralKind::String, std::nullopt},
+			{std::nullopt, LiteralKind::String, std::nullopt},
 			[](
 				FunctionCall const& _call,
 				AbstractAssembly& _assembly,
 				BuiltinContext&,
 				std::function<void(Expression const&)> _visitExpression
 			) {
-				yulAssert(_call.arguments.size() == 2, "");
+				yulAssert(_call.arguments.size() == 3, "");
 
-				_visitExpression(_call.arguments[1]);
+				_visitExpression(_call.arguments[2]);
+				YulString identifier = std::get<Literal>(_call.arguments[1]).value;
+				_visitExpression(_call.arguments[0]);
 				_assembly.setSourceLocation(_call.location);
-				YulString identifier = std::get<Literal>(_call.arguments.front()).value;
 				_assembly.appendImmutableAssignment(identifier.str());
 			}
 		));
@@ -265,7 +286,8 @@ map<YulString, BuiltinFunctionForEVM> createBuiltins(langutil::EVMVersion _evmVe
 EVMDialect::EVMDialect(langutil::EVMVersion _evmVersion, bool _objectAccess):
 	m_objectAccess(_objectAccess),
 	m_evmVersion(_evmVersion),
-	m_functions(createBuiltins(_evmVersion, _objectAccess))
+	m_functions(createBuiltins(_evmVersion, _objectAccess)),
+	m_reserved(createReservedIdentifiers())
 {
 }
 
@@ -276,6 +298,11 @@ BuiltinFunctionForEVM const* EVMDialect::builtin(YulString _name) const
 		return &it->second;
 	else
 		return nullptr;
+}
+
+bool EVMDialect::reservedIdentifier(YulString _name) const
+{
+	return m_reserved.count(_name) != 0;
 }
 
 EVMDialect const& EVMDialect::strictAssemblyForEVM(langutil::EVMVersion _version)
@@ -377,6 +404,7 @@ EVMDialectTyped::EVMDialectTyped(langutil::EVMVersion _evmVersion, bool _objectA
 		BuiltinContext&,
 		std::function<void(Expression const&)> _visitExpression
 	) {
+		// TODO this should use a Panic.
 		// A value larger than 1 causes an invalid instruction.
 		visitArguments(_assembly, _call, _visitExpression);
 		_assembly.appendConstant(2);
