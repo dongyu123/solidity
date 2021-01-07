@@ -1,6 +1,6 @@
 # solc-verify
 
-This is an extended version of the compiler (v0.5.17) that is able to perform **automated formal verification** on Solidity smart contracts using **specification annotations** and **modular program verification**. More information can be found in this readme and in our [publications](#publications).
+This is an extended version of the compiler (v0.7.6) that is able to perform **automated formal verification** on Solidity smart contracts using **specification annotations** and **modular program verification**. More information can be found in this readme and in our [publications](#publications).
 
 First, we present how to [build, install](#build-and-install) and [run](#running-solc-verify) solc-verify including its options.
 Then we illustrate the features of solc-verify through some [examples](#examples).
@@ -13,17 +13,26 @@ Finally, we list all the related [publications](#publications) where even more d
 The easiest way to quickly try solc-verify is to use our [docker image](docker/README.md).
 
 Solc-verify is mainly developed and tested on Linux and OS X.
-It requires [CVC4](http://cvc4.cs.stanford.edu) (or [Z3](https://github.com/Z3Prover/z3)) and [Boogie](https://github.com/boogie-org/boogie) as a verification backend.
-On a standard Ubuntu (18.04) system, solc-verify can be built and installed as follows.
+It requires [Boogie](https://github.com/boogie-org/boogie) as a verification backend with SMT solvers [CVC4](http://cvc4.cs.stanford.edu) and [Z3](https://github.com/Z3Prover/z3).
+By default, solc-verify requires both solvers, as it runs both of them in parallel and get the result from the faster one.
+This can be disabled (see later), in which case it is enough to install only one solver.
+
+On a standard Ubuntu system (18/20), solc-verify can be built and installed as follows.
 
 **[CVC4](http://cvc4.cs.stanford.edu)** (>=1.6 required)
 ```
-wget http://cvc4.cs.stanford.edu/downloads/builds/x86_64-linux-opt/cvc4-1.8-x86_64-linux-opt
-chmod a+x cvc4-1.8-x86_64-linux-opt
-sudo cp cvc4-1.8-x86_64-linux-opt /usr/local/bin/cvc4
+curl --silent "https://api.github.com/repos/CVC4/CVC4/releases/latest" | grep browser_download_url | grep -E 'linux' | cut -d '"' -f 4 | sudo wget -qi - -O /usr/local/bin/cvc4
+sudo chmod a+x /usr/local/bin/cvc4
 ```
 
-CVC4 (or Z3) should be on the `PATH`.
+**[Z3](https://github.com/Z3Prover/z3)**
+```
+curl --silent "https://api.github.com/repos/Z3Prover/z3/releases/latest" | grep browser_download_url | grep -E 'ubuntu' | cut -d '"' -f 4 | wget -qi - -O z3.zip
+sudo sh -c ' unzip -p z3.zip "*bin/z3" > /usr/local/bin/z3'
+sudo chmod a+x /usr/local/bin/z3
+```
+
+CVC4 and Z3 should be on the `PATH` (the previous instructions ensure this). You can verify this with `cvc4 --version` and `z3 --version`.
 
 **[.NET Core runtime 3.1](https://docs.microsoft.com/dotnet/core/install/linux-package-managers)** (required for Boogie)
 ```
@@ -33,17 +42,26 @@ sudo add-apt-repository universe
 sudo apt-get update
 sudo apt-get install apt-transport-https
 sudo apt-get update
-sudo apt-get install dotnet-runtime-3.1
+sudo apt-get install dotnet-sdk-3.1
 ```
 
 **[Boogie](https://github.com/boogie-org/boogie)**
 ```
-wget https://github.com/boogie-org/boogie/releases/download/v2.7.12/Boogie.2.7.12.nupkg
-unzip Boogie.2.7.12.nupkg -d Boogie
+dotnet tool install --global boogie
 ```
-Make sure that you have correct permissions after unzipping: `chmod -R 1744 Boogie/tools/netcoreapp3.1/any/`.
+
+The directory `$HOME/.dotnet/tools` has to be on `PATH`, you can do this by the following commands.
+```
+echo 'export PATH="$PATH:$HOME/.dotnet/tools"' >> ~/.bashrc
+source ~/.bashrc
+```
+
+Use `boogie -version` to verify that Boogie works.
 
 **solc-verify**
+
+_Remark: See instructions on getting the latest [cmake](https://graspingtech.com/upgrade-cmake/) and [g++](https://linuxize.com/post/how-to-install-gcc-compiler-on-ubuntu-18-04/) if you are on Ubuntu 18, as the default version installed by the package manager might be outdated._
+
 ```
 sudo apt install python3-pip -y
 pip3 install psutil
@@ -52,13 +70,11 @@ cd solidity
 ./scripts/install_deps.sh
 mkdir build
 cd build
-cmake -DBOOGIE_BIN="../../Boogie/tools/netcoreapp3.1/any/" -DUSE_Z3=Off -DUSE_CVC4=Off ..
+cmake -DUSE_Z3=Off -DUSE_CVC4=Off ..
 make
 sudo make install
 cd ../..
 ```
-
-_Remark:_ Change `-DBOOGIE_BIN` if Boogie is located in a different directory.
 
 _Remark:_ The `USE_Z3` and `USE_CVC4` flags only disable the experimental SMT checker feature of the compiler (avoiding compilation errors in certain cases), and do not affect the solver selection for solc-verify.
 
@@ -67,7 +83,7 @@ _Remark:_ The `USE_Z3` and `USE_CVC4` flags only disable the experimental SMT ch
 After successful installation, solc-verify can be run by `solc-verify.py <solidity-file>`. You can type `solc-verify.py -h` to print the optional arguments, but we also list them below.
 
 - `-h`, `--help`: Show help message and exit.
-- `--timeout <TIMEOUT>`: Timeout for running the Boogie verifier in seconds (default is 10).
+- `--timeout <TIMEOUT>`: Timeout for running the Boogie verifier in seconds (default is 10). Solc-verify verifies each function separately (also allowing parallel execution). The time limit is _per function_, not the total limit.
 - `--arithmetic {int,bv,mod,mod-overflow}`: Encoding of the arithmetic operations (see [paper](https://arxiv.org/abs/1907.04262) for more details):
   - `int` is SMT (unbounded, mathematical) integer mode, which is scalable and well supported by solvers, but do not capture exact semantics (e.g., overflows, unsigned numbers)
   - `bv` is SMT bitvector mode, which is precise but might not scale for large bit-widths
@@ -75,6 +91,7 @@ After successful installation, solc-verify can be run by `solc-verify.py <solidi
   - `mod-overflow` is modular arithmetic with overflow checking enabled
 - `--modifies-analysis`: State variables and balances are checked for modifications if there are modification annotations or if this flag is explicitly given.
 - `--event-analysis`: Checking emitting events and tracking data changes related to events is only performed if there are event annotations or if this flag is explicitly given.
+- `--parallel <CORES>`: How many cores to use (solc-verify can check each function separately, allowing parallel execution).
 - `--output <DIRECTORY>`: Output directory where the intermediate (e.g., Boogie) files are created (tmp directory by default).
 - `--verbose`: Print all output of the compiler and the verifier.
 - `--smt-log <FILE>`: Log the inputs given by Boogie to the SMT solver into a file (not given by default).
@@ -82,7 +99,7 @@ After successful installation, solc-verify can be run by `solc-verify.py <solidi
 - `--show-warnings`: Display warning messages (not given by default).
 - `--solc <FILE>`: Path to the Solidity compiler to use (which must include our Boogie translator extension) (by default it is the one that includes the Python script).
 - `--boogie <FILE>`: Path to the Boogie verifier binary to use (by default it is the one given during building the tool).
-- `--solver {z3,cvc4}`: SMT solver used by the verifier (default is detected during compile time).
+- `--solver {all,z3,cvc4}`: SMT solver used by the verifier, if `all` is selected solc-verify runs both solvers and gets the first conclusive result. For example, if one solver crashes or exceeds the time limit, but the other answers, the result of the other is taken. Use this option when only one solver is available. (Default is `all`.)
 - `--solver-bin <FILE>`: Path to the solver to be used, if not given, the solver is searched on the system path (not given by default).
 
 ## Examples
