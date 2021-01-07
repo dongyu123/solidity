@@ -14,7 +14,7 @@ The easiest way to quickly try solc-verify is to use our [docker image](docker/R
 
 Solc-verify is mainly developed and tested on Linux and OS X.
 It requires [Boogie](https://github.com/boogie-org/boogie) as a verification backend with SMT solvers [CVC4](http://cvc4.cs.stanford.edu) and [Z3](https://github.com/Z3Prover/z3).
-By default, solc-verify requires both solvers, as it runs both of them in parallel and get the result from the faster one.
+By default, solc-verify requires both solvers, as it runs both of them to get a result even if one of them is inconclusive or exceeds the time limit.
 This can be disabled (see later), in which case it is enough to install only one solver.
 
 On a standard Ubuntu system (18/20), solc-verify can be built and installed as follows.
