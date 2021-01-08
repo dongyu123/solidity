@@ -1,6 +1,8 @@
 # solc-verify
 
-This is an extended version of the compiler (v0.7.6) that is able to perform **automated formal verification** on Solidity smart contracts using **specification annotations** and **modular program verification**. More information can be found in this readme and in our [publications](#publications).
+This is an extended version of the compiler that is able to perform **automated formal verification** on Solidity smart contracts using **specification annotations** and **modular program verification**.
+More information can be found in this readme and in our [publications](#publications).
+This branch is based on **Solidity v0.7.6**, see other branches for different versions.
 
 First, we present how to [build, install](#build-and-install) and [run](#running-solc-verify) solc-verify including its options.
 Then we illustrate the features of solc-verify through some [examples](#examples).
@@ -173,7 +175,7 @@ See the contracts under `test/solc-verify/examples` for examples.
 - Contract and loop invariants can refer to a special **sum function over collections** (`__verifier_sum_int(...)` or `__verifier_sum_uint(...)`). The argument must be an array/mapping state variable with integer values, or must point to an integer member if the array/mapping contains structures (see [`SumOverStructMember.sol`](test/solc-verify/examples/SumOverStructMember.sol)).
 - Postconditions can refer to the **old value** of a variable (before the transaction) using `__verifier_old_<TYPE>` (e.g., `__verifier_old_uint(...)`).
 - Specifications can refer to a special **equality predicate** `__verifier_eq(..., ...)` for reference types such as structures, arrays and mappings (not comparable with the standard Solidity operator `==`). It takes two arguments with the same type. For storage data location it performs a deep equality check, for other data locations it performs a reference equality check.
-- Specification expressions can use **quantifiers** with `forall (<VARS>) <QUANTEXPR>` or `exists (<VARS>) <QUANTEXPR>`. The quantified expression can refer to variables in scope and the quantified variables. For example, given an array state variable `int[] a`, the expression `forall (uint i) !(0 <= i && i < a.length) || (a[i] >= 0)` states that all of its elements are non-negative. See [`QuantifiersSimple.sol`](test/solc-verify/examples/QuantifiersSimple.sol) for examples.
+- Specification expressions can use **quantifiers** with `forall (<VARS>) <QUANTEXPR>` or `exists (<VARS>) <QUANTEXPR>`. The quantified expression can refer to variables in scope and the quantified variables. For example, given an array state variable `int[] a`, the expression `forall (uint i) !(0 <= i && i < a.length) || (a[i] >= 0)` states that all of its elements are non-negative. See [`QuantifiersSimple.sol`](test/solc-verify/examples/QuantifiersSimple.sol) for examples. Note that quantifiers are hard to handle in general so it is recommended to use all SMT solvers (see arguments).
 - **Emits specifiers** (`emits <EVENTNAME>`) can be attached to functions. A function can only emit events that are declared with such specifiers. If an event is specified, but never emitted, a warning is generated. If a function calls other functions, base constructors or modifiers, their events should also be specified, except for external calls (that can emit any event). Note that events are specified only by their name, meaning that any overload can be emitted. For more details see our [paper](https://arxiv.org/abs/2005.10382).
 - **Event data specification** can be attached to events that should be emitted when certain data changes. Events can declare the state variable(s) they _track_ for changes, or in other words, the variables for which the event should be emitted on a change (`tracks-changes-in <VARIABLE>`). Furthermore, pre- and postconditions can also be attached to events to specify the expected state of the data _before_ the change (`precondition <EXPRESSION>`) and _currently_ (`postcondition <EXPRESSION>`). These expressions can refer to state variables and parameters of the event. For state variables, the _current_ state (`postcondition`) means the state at the point of the emit statement, and the state _before_ (`precondition`) refers to the state at the previous _checkpoint_. In the postcondition it is also possible to refer to the previous state using `__verifier_before_<TYPE>(...)` (e.g., `__verifier_before_uint(...)`). Currently, there are checkpoints at the beginning of a function, at function calls, at emit statements and at loop iterations. Note that state variables appearing in the pre- and postconditions of an event are automatically tracked (without explicitly declaring with `tracks-changes-in`).  For more details see our [paper](https://arxiv.org/abs/2005.10382).
 
@@ -182,6 +184,9 @@ Solc-verify targets _functional correctness_ of contracts with respect to _compl
 An _expected failure_ is a failure due to an exception deliberately thrown by the developer (e.g., `require`, `revert`). An _unexpected failure_ is any other failure (e.g., `assert`, overflow).
 Solc-verify performs modular verification by checking for each public function whether it can fail due to an unexpected failure or violate its _specification_ in any completed transaction.
 
+Solc-verify checks each function independently (allowing parallel execution).
+Furthermore, if multiple solvers are available, all of them are executed for each function and the results are merged.
+This way, if a solver is inconclusive, we still have the chance to get a conclusive answer for a function via an other solver.
 The output for each function is `OK`, `ERROR` or `SKIPPED`.
 If a function contains any errors, solc-verify lists them below.
 If a function contains any unsupported features it is skipped and treated as if it could modify any state variable arbitrarily (safe over-approximation).
@@ -211,7 +216,7 @@ Furthermore, `unsupported` contains some unsupported features and is skipped.
 Nevertheless, it is annotated so the function `use_unsupported` that calls it can still be proved correct.
 
 ## Publications
-- [FMBC 2020](https://fmbc.gitlab.io/2020/): [**Formal Specification and Verification of Solidity Contracts with Events** (preprint)](https://arxiv.org/abs/2005.10382): _Extending the specification and verification capabilities to reason about contracts with events._ See also [recording of the talk](https://youtu.be/NNytwVBZ1no).
+- [FMBC 2020](https://fmbc.gitlab.io/2020/): [**Formal Specification and Verification of Solidity Contracts with Events**](https://drops.dagstuhl.de/opus/volltexte/2020/13415/pdf/OASIcs-FMBC-2020-2.pdf): _Extending the specification and verification capabilities to reason about contracts with events._ See also [recording of the talk](https://youtu.be/NNytwVBZ1no).
 - [Solidity Summit 2020](solidity-summit.ethereum.org/): [**solc-verify, a source-level formal verification tool for Solidity smart contracts** (talk recording)](https://www.youtube.com/watch?v=1q2gSm3NuQA): _A developer-oriented demo and talk on the usage of the tool._
 - [ESOP 2020](https://www.etaps.org/2020/esop): [**SMT-Friendly Formalization of the Solidity Memory Model** (paper)](https://arxiv.org/abs/2001.03256): _Formalization of reference types (e.g., arrays, mappings, structs) and the memory model (storage and memory data locations)._
   - Also presented at [SMT 2020](http://smt-workshop.cs.uiowa.edu/2020/), see [talk recording](https://youtu.be/B3ML9vGituk?t=626).
