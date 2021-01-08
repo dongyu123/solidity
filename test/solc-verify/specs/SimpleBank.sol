@@ -15,7 +15,7 @@ contract SimpleBank {
     function withdraw_transfer() public {
         require(address(this) != msg.sender);
         if (user_balances[msg.sender] > 0 && address(this).balance > user_balances[msg.sender]) {
-            msg.sender.transfer(user_balances[msg.sender]);
+            payable(msg.sender).transfer(user_balances[msg.sender]);
             user_balances[msg.sender] = 0;
         }
     }

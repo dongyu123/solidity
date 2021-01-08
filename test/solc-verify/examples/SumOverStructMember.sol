@@ -21,6 +21,6 @@ contract Bank {
         uint amount = accounts[msg.sender].balance;
         require(amount > 0);
         accounts[msg.sender].balance = 0;
-        msg.sender.transfer(amount);
+        payable(msg.sender).transfer(amount);
     }
 }
