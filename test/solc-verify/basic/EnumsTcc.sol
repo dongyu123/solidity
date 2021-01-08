@@ -5,7 +5,7 @@ contract Enums {
     enum Dir { Up, Down, Left, Right }
 
     function f(Dir d) public pure {
-        int x = int(d);
+        uint x = uint(d);
         assert(0 <= x && x < 4);
     }
 }

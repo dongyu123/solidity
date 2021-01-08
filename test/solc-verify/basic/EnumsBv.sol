@@ -11,7 +11,7 @@ contract EnumsBv {
     }
 
     function ok2() public pure {
-        int8 x = int8(Dir.Down);
+        uint8 x = uint8(Dir.Down);
         assert(x == 1);
     }
 

@@ -30,7 +30,7 @@ contract Enums {
     }
 
     function conversion2(I.Other other) public {
-        dir = Dir(int(other)); // Conversion might fail
+        dir = Dir(uint(other)); // Conversion might fail
     }
 
     receive() external payable {
