@@ -604,20 +604,11 @@ ASTBoogieUtils::ExprWithCC ASTBoogieUtils::encodeArithUnaryOp(BoogieContext& con
 		case Token::Sub:
 		{
 			auto sub = bg::Expr::neg(subExpr);
-			if (isSigned)
-			{
-				auto smallestSigned = bg::Expr::intlit(-boost::multiprecision::pow(bg::bigint(2), bits - 1));
-				result = bg::Expr::cond(bg::Expr::eq(subExpr, smallestSigned),
-						smallestSigned,
-						sub);
-			}
-			else
-			{
-				auto modulo = bg::Expr::intlit(boost::multiprecision::pow(bg::bigint(2), bits));
-				result = bg::Expr::cond(bg::Expr::eq(subExpr, bg::Expr::intlit((long)0)),
-						bg::Expr::intlit((long)0),
-						bg::Expr::minus(modulo, subExpr));
-			}
+			solAssert(isSigned, "Unary minus should not be applied to unsigned type");
+			auto smallestSigned = bg::Expr::intlit(-boost::multiprecision::pow(bg::bigint(2), bits - 1));
+			result = bg::Expr::cond(bg::Expr::eq(subExpr, smallestSigned),
+					smallestSigned,
+					sub);
 			ecc = bg::Expr::eq(sub, result);
 			break;
 		}

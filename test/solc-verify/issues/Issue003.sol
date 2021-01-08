@@ -136,7 +136,7 @@ contract Issue003 {
     I003_A constant EZ = FA;
     I003_A constant FA = FB;
     I003_A constant FB = FC;
-    I003_A constant FC = I003_A(0x00);
+    I003_A constant FC = I003_A(address(0x00));
 
     constructor() {
         check();
