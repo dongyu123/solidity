@@ -20,7 +20,7 @@ contract ToBeKilled {
 
     /// @notice postcondition address(p).balance >= msg.value
     receive() external payable {
-        selfdestruct(address(p));
+        selfdestruct(payable(address(p)));
     }
 }
 
