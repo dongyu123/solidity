@@ -1,6 +1,8 @@
 # solc-verify
 
-This is an extended version of the compiler (v0.5.17) that is able to perform **automated formal verification** on Solidity smart contracts using **specification annotations** and **modular program verification**. More information can be found in this readme and in our [publications](#publications).
+This is an extended version of the compiler that is able to perform **automated formal verification** on Solidity smart contracts using **specification annotations** and **modular program verification**.
+More information can be found in this readme and in our [publications](#publications).
+This branch is based on **Solidity v0.7.6**, see other branches for different versions.
 
 First, we present how to [build, install](#build-and-install) and [run](#running-solc-verify) solc-verify including its options.
 Then we illustrate the features of solc-verify through some [examples](#examples).
@@ -13,17 +15,26 @@ Finally, we list all the related [publications](#publications) where even more d
 The easiest way to quickly try solc-verify is to use our [docker image](docker/README.md).
 
 Solc-verify is mainly developed and tested on Linux and OS X.
-It requires [CVC4](http://cvc4.cs.stanford.edu) (or [Z3](https://github.com/Z3Prover/z3)) and [Boogie](https://github.com/boogie-org/boogie) as a verification backend.
-On a standard Ubuntu (18.04) system, solc-verify can be built and installed as follows.
+It requires [Boogie](https://github.com/boogie-org/boogie) as a verification backend with SMT solvers [CVC4](http://cvc4.cs.stanford.edu) and [Z3](https://github.com/Z3Prover/z3).
+By default, solc-verify requires both solvers, as it runs both of them to get a result even if one of them is inconclusive or exceeds the time limit.
+This can be disabled (see later), in which case it is enough to install only one solver.
+
+On a standard Ubuntu system (18/20), solc-verify can be built and installed as follows.
 
 **[CVC4](http://cvc4.cs.stanford.edu)** (>=1.6 required)
 ```
-wget http://cvc4.cs.stanford.edu/downloads/builds/x86_64-linux-opt/cvc4-1.8-x86_64-linux-opt
-chmod a+x cvc4-1.8-x86_64-linux-opt
-sudo cp cvc4-1.8-x86_64-linux-opt /usr/local/bin/cvc4
+curl --silent "https://api.github.com/repos/CVC4/CVC4/releases/latest" | grep browser_download_url | grep -E 'linux' | cut -d '"' -f 4 | sudo wget -qi - -O /usr/local/bin/cvc4
+sudo chmod a+x /usr/local/bin/cvc4
 ```
 
-CVC4 (or Z3) should be on the `PATH`.
+**[Z3](https://github.com/Z3Prover/z3)**
+```
+curl --silent "https://api.github.com/repos/Z3Prover/z3/releases/latest" | grep browser_download_url | grep -E 'ubuntu' | cut -d '"' -f 4 | wget -qi - -O z3.zip
+sudo sh -c ' unzip -p z3.zip "*bin/z3" > /usr/local/bin/z3'
+sudo chmod a+x /usr/local/bin/z3
+```
+
+CVC4 and Z3 should be on the `PATH` (the previous instructions ensure this). You can verify this with `cvc4 --version` and `z3 --version`.
 
 **[.NET Core runtime 3.1](https://docs.microsoft.com/dotnet/core/install/linux-package-managers)** (required for Boogie)
 ```
@@ -33,17 +44,26 @@ sudo add-apt-repository universe
 sudo apt-get update
 sudo apt-get install apt-transport-https
 sudo apt-get update
-sudo apt-get install dotnet-runtime-3.1
+sudo apt-get install dotnet-sdk-3.1
 ```
 
 **[Boogie](https://github.com/boogie-org/boogie)**
 ```
-wget https://github.com/boogie-org/boogie/releases/download/v2.7.12/Boogie.2.7.12.nupkg
-unzip Boogie.2.7.12.nupkg -d Boogie
+dotnet tool install --global boogie
 ```
-Make sure that you have correct permissions after unzipping: `chmod -R 1744 Boogie/tools/netcoreapp3.1/any/`.
+
+The directory `$HOME/.dotnet/tools` has to be on `PATH`, you can do this by the following commands.
+```
+echo 'export PATH="$PATH:$HOME/.dotnet/tools"' >> ~/.bashrc
+source ~/.bashrc
+```
+
+Use `boogie -version` to verify that Boogie works.
 
 **solc-verify**
+
+_Remark: See instructions on getting the latest [cmake](https://graspingtech.com/upgrade-cmake/) and [g++](https://linuxize.com/post/how-to-install-gcc-compiler-on-ubuntu-18-04/) if you are on Ubuntu 18, as the default version installed by the package manager might be outdated._
+
 ```
 sudo apt install python3-pip -y
 pip3 install psutil
@@ -52,13 +72,11 @@ cd solidity
 ./scripts/install_deps.sh
 mkdir build
 cd build
-cmake -DBOOGIE_BIN="../../Boogie/tools/netcoreapp3.1/any/" -DUSE_Z3=Off -DUSE_CVC4=Off ..
+cmake -DUSE_Z3=Off -DUSE_CVC4=Off ..
 make
 sudo make install
 cd ../..
 ```
-
-_Remark:_ Change `-DBOOGIE_BIN` if Boogie is located in a different directory.
 
 _Remark:_ The `USE_Z3` and `USE_CVC4` flags only disable the experimental SMT checker feature of the compiler (avoiding compilation errors in certain cases), and do not affect the solver selection for solc-verify.
 
@@ -67,7 +85,7 @@ _Remark:_ The `USE_Z3` and `USE_CVC4` flags only disable the experimental SMT ch
 After successful installation, solc-verify can be run by `solc-verify.py <solidity-file>`. You can type `solc-verify.py -h` to print the optional arguments, but we also list them below.
 
 - `-h`, `--help`: Show help message and exit.
-- `--timeout <TIMEOUT>`: Timeout for running the Boogie verifier in seconds (default is 10).
+- `--timeout <TIMEOUT>`: Timeout for running the Boogie verifier in seconds (default is 10). Solc-verify verifies each function separately (also allowing parallel execution). The time limit is _per function_, not the total limit.
 - `--arithmetic {int,bv,mod,mod-overflow}`: Encoding of the arithmetic operations (see [paper](https://arxiv.org/abs/1907.04262) for more details):
   - `int` is SMT (unbounded, mathematical) integer mode, which is scalable and well supported by solvers, but do not capture exact semantics (e.g., overflows, unsigned numbers)
   - `bv` is SMT bitvector mode, which is precise but might not scale for large bit-widths
@@ -75,6 +93,7 @@ After successful installation, solc-verify can be run by `solc-verify.py <solidi
   - `mod-overflow` is modular arithmetic with overflow checking enabled
 - `--modifies-analysis`: State variables and balances are checked for modifications if there are modification annotations or if this flag is explicitly given.
 - `--event-analysis`: Checking emitting events and tracking data changes related to events is only performed if there are event annotations or if this flag is explicitly given.
+- `--parallel <CORES>`: How many cores to use (solc-verify can check each function separately, allowing parallel execution).
 - `--output <DIRECTORY>`: Output directory where the intermediate (e.g., Boogie) files are created (tmp directory by default).
 - `--verbose`: Print all output of the compiler and the verifier.
 - `--smt-log <FILE>`: Log the inputs given by Boogie to the SMT solver into a file (not given by default).
@@ -82,7 +101,7 @@ After successful installation, solc-verify can be run by `solc-verify.py <solidi
 - `--show-warnings`: Display warning messages (not given by default).
 - `--solc <FILE>`: Path to the Solidity compiler to use (which must include our Boogie translator extension) (by default it is the one that includes the Python script).
 - `--boogie <FILE>`: Path to the Boogie verifier binary to use (by default it is the one given during building the tool).
-- `--solver {z3,cvc4}`: SMT solver used by the verifier (default is detected during compile time).
+- `--solver {all,z3,cvc4}`: SMT solver used by the verifier, if `all` is selected solc-verify runs both solvers and gets the first conclusive result. For example, if one solver crashes or exceeds the time limit, but the other answers, the result of the other is taken. Use this option when only one solver is available. (Default is `all`.)
 - `--solver-bin <FILE>`: Path to the solver to be used, if not given, the solver is searched on the system path (not given by default).
 
 ## Examples
@@ -156,7 +175,7 @@ See the contracts under `test/solc-verify/examples` for examples.
 - Contract and loop invariants can refer to a special **sum function over collections** (`__verifier_sum_int(...)` or `__verifier_sum_uint(...)`). The argument must be an array/mapping state variable with integer values, or must point to an integer member if the array/mapping contains structures (see [`SumOverStructMember.sol`](test/solc-verify/examples/SumOverStructMember.sol)).
 - Postconditions can refer to the **old value** of a variable (before the transaction) using `__verifier_old_<TYPE>` (e.g., `__verifier_old_uint(...)`).
 - Specifications can refer to a special **equality predicate** `__verifier_eq(..., ...)` for reference types such as structures, arrays and mappings (not comparable with the standard Solidity operator `==`). It takes two arguments with the same type. For storage data location it performs a deep equality check, for other data locations it performs a reference equality check.
-- Specification expressions can use **quantifiers** with `forall (<VARS>) <QUANTEXPR>` or `exists (<VARS>) <QUANTEXPR>`. The quantified expression can refer to variables in scope and the quantified variables. For example, given an array state variable `int[] a`, the expression `forall (uint i) !(0 <= i && i < a.length) || (a[i] >= 0)` states that all of its elements are non-negative. See [`QuantifiersSimple.sol`](test/solc-verify/examples/QuantifiersSimple.sol) for examples.
+- Specification expressions can use **quantifiers** with `forall (<VARS>) <QUANTEXPR>` or `exists (<VARS>) <QUANTEXPR>`. The quantified expression can refer to variables in scope and the quantified variables. For example, given an array state variable `int[] a`, the expression `forall (uint i) !(0 <= i && i < a.length) || (a[i] >= 0)` states that all of its elements are non-negative. See [`QuantifiersSimple.sol`](test/solc-verify/examples/QuantifiersSimple.sol) for examples. Note that quantifiers are hard to handle in general so it is recommended to use all SMT solvers (see arguments).
 - **Emits specifiers** (`emits <EVENTNAME>`) can be attached to functions. A function can only emit events that are declared with such specifiers. If an event is specified, but never emitted, a warning is generated. If a function calls other functions, base constructors or modifiers, their events should also be specified, except for external calls (that can emit any event). Note that events are specified only by their name, meaning that any overload can be emitted. For more details see our [paper](https://arxiv.org/abs/2005.10382).
 - **Event data specification** can be attached to events that should be emitted when certain data changes. Events can declare the state variable(s) they _track_ for changes, or in other words, the variables for which the event should be emitted on a change (`tracks-changes-in <VARIABLE>`). Furthermore, pre- and postconditions can also be attached to events to specify the expected state of the data _before_ the change (`precondition <EXPRESSION>`) and _currently_ (`postcondition <EXPRESSION>`). These expressions can refer to state variables and parameters of the event. For state variables, the _current_ state (`postcondition`) means the state at the point of the emit statement, and the state _before_ (`precondition`) refers to the state at the previous _checkpoint_. In the postcondition it is also possible to refer to the previous state using `__verifier_before_<TYPE>(...)` (e.g., `__verifier_before_uint(...)`). Currently, there are checkpoints at the beginning of a function, at function calls, at emit statements and at loop iterations. Note that state variables appearing in the pre- and postconditions of an event are automatically tracked (without explicitly declaring with `tracks-changes-in`).  For more details see our [paper](https://arxiv.org/abs/2005.10382).
 
@@ -165,6 +184,9 @@ Solc-verify targets _functional correctness_ of contracts with respect to _compl
 An _expected failure_ is a failure due to an exception deliberately thrown by the developer (e.g., `require`, `revert`). An _unexpected failure_ is any other failure (e.g., `assert`, overflow).
 Solc-verify performs modular verification by checking for each public function whether it can fail due to an unexpected failure or violate its _specification_ in any completed transaction.
 
+Solc-verify checks each function independently (allowing parallel execution).
+Furthermore, if multiple solvers are available, all of them are executed for each function and the results are merged.
+This way, if a solver is inconclusive, we still have the chance to get a conclusive answer for a function via an other solver.
 The output for each function is `OK`, `ERROR` or `SKIPPED`.
 If a function contains any errors, solc-verify lists them below.
 If a function contains any unsupported features it is skipped and treated as if it could modify any state variable arbitrarily (safe over-approximation).
@@ -194,7 +216,7 @@ Furthermore, `unsupported` contains some unsupported features and is skipped.
 Nevertheless, it is annotated so the function `use_unsupported` that calls it can still be proved correct.
 
 ## Publications
-- [FMBC 2020](https://fmbc.gitlab.io/2020/): [**Formal Specification and Verification of Solidity Contracts with Events** (preprint)](https://arxiv.org/abs/2005.10382): _Extending the specification and verification capabilities to reason about contracts with events._ See also [recording of the talk](https://youtu.be/NNytwVBZ1no).
+- [FMBC 2020](https://fmbc.gitlab.io/2020/): [**Formal Specification and Verification of Solidity Contracts with Events**](https://drops.dagstuhl.de/opus/volltexte/2020/13415/pdf/OASIcs-FMBC-2020-2.pdf): _Extending the specification and verification capabilities to reason about contracts with events._ See also [recording of the talk](https://youtu.be/NNytwVBZ1no).
 - [Solidity Summit 2020](solidity-summit.ethereum.org/): [**solc-verify, a source-level formal verification tool for Solidity smart contracts** (talk recording)](https://www.youtube.com/watch?v=1q2gSm3NuQA): _A developer-oriented demo and talk on the usage of the tool._
 - [ESOP 2020](https://www.etaps.org/2020/esop): [**SMT-Friendly Formalization of the Solidity Memory Model** (paper)](https://arxiv.org/abs/2001.03256): _Formalization of reference types (e.g., arrays, mappings, structs) and the memory model (storage and memory data locations)._
   - Also presented at [SMT 2020](http://smt-workshop.cs.uiowa.edu/2020/), see [talk recording](https://youtu.be/B3ML9vGituk?t=626).

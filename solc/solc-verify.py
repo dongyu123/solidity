@@ -277,7 +277,7 @@ def main(tmpDir):
     # Set up argument parser
     parser = argparse.ArgumentParser(description='Verify Solidity smart contracts.', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('file', type=str, help='Path to the input file')
-    parser.add_argument('--timeout', type=int, help='Timeout for running Boogie (in seconds)', default=10)
+    parser.add_argument('--timeout', type=int, help='Timeout (per function) for running Boogie (in seconds)', default=10)
     parser.add_argument('--arithmetic', type=str, help='Encoding used for arithmetic data types and operations in the verifier', default='int', choices=['int', 'bv', 'mod', 'mod-overflow'])
     parser.add_argument('--modifies-analysis', action='store_true', help='Perform modification analysis on state variables')
     parser.add_argument('--event-analysis', action='store_true', help='Perform analysis on emitted events and data changes')
@@ -292,7 +292,7 @@ def main(tmpDir):
     parser.add_argument('--solc', type=str, help='Solidity compiler to use (with boogie translator)', default=os.path.dirname(os.path.realpath(__file__)) + '/solc')
     parser.add_argument('--boogie', type=str, help='Boogie verifier binary to use', default='boogie')
     parser.add_argument('--solver', type=str, help='SMT solver used by the verifier', default='all', choices=['all', 'z3', 'cvc4'])
-    parser.add_argument('--solver-bin', type=str, help='Binary of the solver to use')
+    parser.add_argument('--solver-bin', type=str, help='Override the binary of the solver to use')
 
     args = parser.parse_args()
 
