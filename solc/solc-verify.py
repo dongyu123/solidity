@@ -333,13 +333,13 @@ def main(tmpDir):
     for line, nextLine in zip(compilerOutputLines, compilerOutputLines[1:]):
         # Ignore pre-release warnings
         if line == 'Warning: This is a pre-release compiler version, please do not use it in production.': continue
+        # Check if source location info is in next line
+        if nextLine.lstrip().startswith('--> '):
+            line = nextLine.lstrip().replace('--> ', '') + ' ' + line
         # Other warnings should be printed
         if 'Warning: ' in line or 'solc-verify warning: ' in line:
             warnings += 1
             if args.show_warnings:
-                # For compiler warnings, source location is in next line
-                if 'Warning: ' in line and nextLine.lstrip().startswith('--> '):
-                    line = nextLine.lstrip().replace('--> ', '') + ' ' + line
                 line = line.replace('Warning: ', yellowTxt('Warning') + ': ')
                 line = line.replace('solc-verify warning: ', yellowTxt('solc-verify warning') + ': ')
                 print(line)
