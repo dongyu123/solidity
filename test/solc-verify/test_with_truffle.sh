@@ -94,7 +94,7 @@ do
   echo "    return $c_name.deployed().then(function(instance) {"
   echo "      contract = instance"
   echo "      let amount = web3.utils.toWei('1', 'ether')"
-  echo "      return web3.eth.sendTransaction({ from: user, to: contract.address, gas: 500000, value: amount });"
+  echo "      return web3.eth.sendTransaction({ from: user, to: contract.address, gas: 1000000, value: amount });"
   echo "    });"
   echo "  });"
 done
