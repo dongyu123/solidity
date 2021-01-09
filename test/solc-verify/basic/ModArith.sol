@@ -2,16 +2,16 @@
 pragma solidity >=0.7.0;
 
 contract ModArith {
-    function add8u(uint8 x, uint8 y) private pure returns (uint8) { return x + y; }
-    function sub8u(uint8 x, uint8 y) private pure returns (uint8) { return x - y; }
-    function mul8u(uint8 x, uint8 y) private pure returns (uint8) { return x * y; }
-    function div8u(uint8 x, uint8 y) private pure returns (uint8) { return x / y; }
+    function add8u(uint8 x, uint8 y) private pure returns (uint8) { unchecked { return x + y; } }
+    function sub8u(uint8 x, uint8 y) private pure returns (uint8) { unchecked { return x - y; } }
+    function mul8u(uint8 x, uint8 y) private pure returns (uint8) { unchecked { return x * y; } }
+    function div8u(uint8 x, uint8 y) private pure returns (uint8) { unchecked { return x / y; } }
 
-    function add8s(int8 x, int8 y) private pure returns (int8) { return x + y; }
-    function sub8s(int8 x, int8 y) private pure returns (int8) { return x - y; }
-    function mul8s(int8 x, int8 y) private pure returns (int8) { return x * y; }
-    function div8s(int8 x, int8 y) private pure returns (int8) { return x / y; }
-    function sub8s(int8 x) private pure returns (int8) {return -x; }
+    function add8s(int8 x, int8 y) private pure returns (int8) { unchecked { return x + y; } }
+    function sub8s(int8 x, int8 y) private pure returns (int8) { unchecked { return x - y; } }
+    function mul8s(int8 x, int8 y) private pure returns (int8) { unchecked { return x * y; } }
+    function div8s(int8 x, int8 y) private pure returns (int8) { unchecked { return x / y; } }
+    function sub8s(int8 x) private pure returns (int8) { unchecked { return -x; } }
 
     function eq8u(uint8 x, uint8 y) private pure returns (bool) { return x == y; }
     function ne8u(uint8 x, uint8 y) private pure returns (bool) { return x != y; }

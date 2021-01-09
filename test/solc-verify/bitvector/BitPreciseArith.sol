@@ -2,47 +2,55 @@
 pragma solidity >=0.7.0;
 
 contract BitPreciseArith {
-    function add8u(uint8 x, uint8 y) private pure returns (uint8) { return x + y; }
-    function sub8u(uint8 x, uint8 y) private pure returns (uint8) { return x - y; }
-    function mul8u(uint8 x, uint8 y) private pure returns (uint8) { return x * y; }
-    function div8u(uint8 x, uint8 y) private pure returns (uint8) { return x / y; }
+    function add8u(uint8 x, uint8 y) private pure returns (uint8) { unchecked { return x + y; } }
+    function sub8u(uint8 x, uint8 y) private pure returns (uint8) { unchecked { return x - y; } }
+    function mul8u(uint8 x, uint8 y) private pure returns (uint8) { unchecked { return x * y; } }
+    function div8u(uint8 x, uint8 y) private pure returns (uint8) { unchecked { return x / y; } }
 
-    function add8s(int8 x, int8 y) private pure returns (int8) { return x + y; }
-    function sub8s(int8 x, int8 y) private pure returns (int8) { return x - y; }
-    function mul8s(int8 x, int8 y) private pure returns (int8) { return x * y; }
-    function div8s(int8 x, int8 y) private pure returns (int8) { return x / y; }
+    function add8s(int8 x, int8 y) private pure returns (int8) { unchecked { return x + y; } }
+    function sub8s(int8 x, int8 y) private pure returns (int8) { unchecked { return x - y; } }
+    function mul8s(int8 x, int8 y) private pure returns (int8) { unchecked { return x * y; } }
+    function div8s(int8 x, int8 y) private pure returns (int8) { unchecked { return x / y; } }
 
     function preinc8u(uint8 x) private pure returns (uint8) {
-        uint8 result = x;
-        uint8 tmp = ++result;
-        assert(tmp == result);
-        return result;
+        unchecked {
+            uint8 result = x;
+            uint8 tmp = ++result;
+            assert(tmp == result);
+            return result;
+        }
     }
     function postinc8u(uint8 x) private pure returns (uint8) {
-        uint8 result = x;
-        uint8 tmp = result++;
-        assert(tmp == x);
-        return result;
+        unchecked {
+            uint8 result = x;
+            uint8 tmp = result++;
+            assert(tmp == x);
+            return result;
+        }
     }
     function predec8u(uint8 x) private pure returns (uint8) {
-        uint8 result = x;
-        uint8 tmp = --result;
-        assert(tmp == result);
-        return result;
+        unchecked {
+            uint8 result = x;
+            uint8 tmp = --result;
+            assert(tmp == result);
+            return result;
+        }
     }
     function postdec8u(uint8 x) private pure returns (uint8) {
-        uint8 result = x;
-        uint8 tmp = result--;
-        assert(tmp == x);
-        return result;
+        unchecked {
+            uint8 result = x;
+            uint8 tmp = result--;
+            assert(tmp == x);
+            return result;
+        }
     }
 
     function bitand8u(uint8 x, uint8 y) private pure returns (uint8) { return x & y; }
     function bitor8u(uint8 x, uint8 y) private pure returns (uint8) { return x | y; }
     function bitxor8u(uint8 x, uint8 y) private pure returns (uint8) { return x ^ y; }
-    function bitshl8u(uint8 x, uint8 y) private pure returns (uint8) { return x << y; }
-    function bitsar8u(uint8 x, uint8 y) private pure returns (uint8) { return x >> y; }
-    function bitsar8s(int8 x, uint8 y) private pure returns (int8) { return x >> y; }
+    function bitshl8u(uint8 x, uint8 y) private pure returns (uint8) { unchecked { return x << y; } }
+    function bitsar8u(uint8 x, uint8 y) private pure returns (uint8) { unchecked { return x >> y; } }
+    function bitsar8s(int8 x, uint8 y) private pure returns (int8) { unchecked { return x >> y; } }
 
     function eq8u(uint8 x, uint8 y) private pure returns (bool) { return x == y; }
     function ne8u(uint8 x, uint8 y) private pure returns (bool) { return x != y; }
