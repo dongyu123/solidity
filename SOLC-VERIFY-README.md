@@ -1,14 +1,13 @@
 # solc-verify
 
 This is an extended version of the compiler that is able to perform **automated formal verification** on Solidity smart contracts using **specification annotations** and **modular program verification**.
-More information can be found in this readme and in our [publications](#publications).
+More information can be found in this readme and in our [publications](https://github.com/SRI-CSL/solidity/wiki/Publications).
 This branch is based on **Solidity v0.7.6**, see other branches for different versions.
 
 First, we present how to [build, install](#build-and-install) and [run](#running-solc-verify) solc-verify including its options.
 Then we illustrate the features of solc-verify through some [examples](#examples).
 We discuss available [specification annotations](#specification-annotations) and interpreting
 [verification results](#verification-and-results) in more detail.
-Finally, we list all the related [publications](#publications) where even more details can be found.
 
 ## Build and Install
 
@@ -216,25 +215,5 @@ Furthermore, `unsupported` contains some unsupported features and is skipped.
 Nevertheless, it is annotated so the function `use_unsupported` that calls it can still be proved correct.
 
 ## Publications
-- [FMBC 2020](https://fmbc.gitlab.io/2020/): [**Formal Specification and Verification of Solidity Contracts with Events**](https://drops.dagstuhl.de/opus/volltexte/2020/13415/pdf/OASIcs-FMBC-2020-2.pdf): _Extending the specification and verification capabilities to reason about contracts with events._ See also [recording of the talk](https://youtu.be/NNytwVBZ1no).
-- [Solidity Summit 2020](solidity-summit.ethereum.org/): [**solc-verify, a source-level formal verification tool for Solidity smart contracts** (talk recording)](https://www.youtube.com/watch?v=1q2gSm3NuQA): _A developer-oriented demo and talk on the usage of the tool._
-- [ESOP 2020](https://www.etaps.org/2020/esop): [**SMT-Friendly Formalization of the Solidity Memory Model** (paper)](https://arxiv.org/abs/2001.03256): _Formalization of reference types (e.g., arrays, mappings, structs) and the memory model (storage and memory data locations)._
-  - Also presented at [SMT 2020](http://smt-workshop.cs.uiowa.edu/2020/), see [talk recording](https://youtu.be/B3ML9vGituk?t=626).
-- [VSTTE 2019](https://sri-csl.github.io/VSTTE19/): [**solc-verify: A Modular Verifier for Solidity Smart Contracts** (paper)](https://arxiv.org/abs/1907.04262): _An overview of the modular verification approach including the specification annotations and the translation to Boogie._
 
-To cite solc-verify (as a tool), please use
-```
-@incollection{solcverify,
-    author     = {Hajdu, {\'A}kos and Jovanovi{\'c}, Dejan},
-    title      = {solc-verify: A Modular Verifier for {S}olidity Smart Contracts},
-    year       = {2020},
-    booktitle  = {Verified Software. Theories, Tools, and Experiments},
-    series     = {Lecture Notes in Computer Science},
-    volume     = {12301},
-    publisher  = {Springer},
-    editor     = {Chakraborty, Supratik and Navas, Jorge A.},
-    pages      = {161-179},
-    isbn       = {978-3-030-41600-3},
-    doi        = {10.1007/978-3-030-41600-3_11},
-}
-```
+See a list of publications related to solc-verify at the [wiki](https://github.com/SRI-CSL/solidity/wiki/Publications).
