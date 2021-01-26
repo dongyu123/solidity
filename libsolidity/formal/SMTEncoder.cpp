@@ -312,20 +312,6 @@ bool SMTEncoder::visit(InlineAssembly const& _inlineAsm)
 	return false;
 }
 
-bool SMTEncoder::visit(TryCatchClause const& _clause)
-{
-	if (auto params = _clause.parameters())
-		for (auto const& var: params->parameters())
-			createVariable(*var);
-
-	m_errorReporter.warning(
-		7645_error,
-		_clause.location(),
-		"Assertion checker does not support try/catch clauses."
-	);
-	return false;
-}
-
 void SMTEncoder::pushInlineFrame(CallableDeclaration const&)
 {
 	pushPathCondition(currentPathConditions());
@@ -338,36 +324,8 @@ void SMTEncoder::popInlineFrame(CallableDeclaration const&)
 
 void SMTEncoder::endVisit(VariableDeclarationStatement const& _varDecl)
 {
-	if (_varDecl.declarations().size() != 1)
-	{
-		if (auto init = _varDecl.initialValue())
-		{
-			auto symbTuple = dynamic_pointer_cast<smt::SymbolicTupleVariable>(m_context.expression(*init));
-			solAssert(symbTuple, "");
-			auto const& symbComponents = symbTuple->components();
-
-			auto tupleType = dynamic_cast<TupleType const*>(init->annotation().type);
-			solAssert(tupleType, "");
-			solAssert(tupleType->components().size() == symbTuple->components().size(), "");
-			auto const& components = tupleType->components();
-
-			auto const& declarations = _varDecl.declarations();
-			solAssert(symbComponents.size() == declarations.size(), "");
-			for (unsigned i = 0; i < declarations.size(); ++i)
-				if (
-					components.at(i) &&
-					declarations.at(i) &&
-					m_context.knownVariable(*declarations.at(i))
-				)
-					assignment(*declarations.at(i), symbTuple->component(i, components.at(i), declarations.at(i)->type()));
-		}
-	}
-	else
-	{
-		solAssert(m_context.knownVariable(*_varDecl.declarations().front()), "");
-		if (_varDecl.initialValue())
-			assignment(*_varDecl.declarations().front(), *_varDecl.initialValue());
-	}
+	if (auto init = _varDecl.initialValue())
+		expressionToTupleAssignment(_varDecl.declarations(), *init);
 }
 
 bool SMTEncoder::visit(Assignment const& _assignment)
@@ -815,7 +773,7 @@ void SMTEncoder::visitABIFunction(FunctionCall const& _funCall)
 
 	optional<smtutil::Expression> arg;
 	if (inTypes.size() == 1)
-		arg = expr(*args.at(0));
+		arg = expr(*args.at(0), inTypes.at(0));
 	else
 	{
 		auto inputSort = dynamic_cast<smtutil::ArraySort&>(*symbFunction.sort).domain;
@@ -1589,9 +1547,12 @@ void SMTEncoder::arrayPush(FunctionCall const& _funCall)
 	m_context.addAssertion(oldLength + 1 < (smt::maxValue(*TypeProvider::uint256()) - 1));
 
 	auto const& arguments = _funCall.arguments();
+	auto arrayType = dynamic_cast<ArrayType const*>(symbArray->type());
+	solAssert(arrayType, "");
+	auto elementType = arrayType->baseType();
 	smtutil::Expression element = arguments.empty() ?
-		smt::zeroValue(_funCall.annotation().type) :
-		expr(*arguments.front());
+		smt::zeroValue(elementType) :
+		expr(*arguments.front(), elementType);
 	smtutil::Expression store = smtutil::Expression::store(
 		symbArray->elements(),
 		oldLength,
@@ -2119,6 +2080,37 @@ smtutil::Expression SMTEncoder::compoundAssignment(Assignment const& _assignment
 		_assignment
 	);
 	return values.first;
+}
+
+void SMTEncoder::expressionToTupleAssignment(vector<shared_ptr<VariableDeclaration>> const& _variables, Expression const& _rhs)
+{
+	auto symbolicVar = m_context.expression(_rhs);
+	if (_variables.size() > 1)
+	{
+		auto symbTuple = dynamic_pointer_cast<smt::SymbolicTupleVariable>(symbolicVar);
+		solAssert(symbTuple, "");
+		auto const& symbComponents = symbTuple->components();
+		solAssert(symbComponents.size() == _variables.size(), "");
+		auto tupleType = dynamic_cast<TupleType const*>(_rhs.annotation().type);
+		solAssert(tupleType, "");
+		auto const& typeComponents = tupleType->components();
+		solAssert(typeComponents.size() == symbComponents.size(), "");
+		for (unsigned i = 0; i < symbComponents.size(); ++i)
+		{
+			auto param = _variables.at(i);
+			if (param)
+			{
+				solAssert(m_context.knownVariable(*param), "");
+				assignment(*param, symbTuple->component(i, typeComponents[i], param->type()));
+			}
+		}
+	}
+	else if (_variables.size() == 1)
+	{
+		auto const& var = *_variables.front();
+		solAssert(m_context.knownVariable(var), "");
+		assignment(var, _rhs);
+	}
 }
 
 void SMTEncoder::assignment(VariableDeclaration const& _variable, Expression const& _value)
@@ -2651,15 +2643,24 @@ pair<FunctionDefinition const*, ContractDefinition const*> SMTEncoder::functionC
 		auto funDef = dynamic_cast<FunctionDefinition const*>(_ref->annotation().referencedDeclaration);
 		if (!funDef)
 			return {funDef, _contract};
-		auto contextContract = _contract;
-		if (lookup == VirtualLookup::Virtual)
+		ContractDefinition const* contextContract = nullptr;
+		switch (lookup)
+		{
+		case VirtualLookup::Virtual:
 			funDef = &funDef->resolveVirtual(*_contract);
-		else if (lookup == VirtualLookup::Super)
+			contextContract = _contract;
+			break;
+		case VirtualLookup::Super:
 		{
 			auto super = _contract->superContract(*_contract);
 			solAssert(super, "Super contract not available.");
 			funDef = &funDef->resolveVirtual(*_contract, super);
 			contextContract = super;
+			break;
+		}
+		case VirtualLookup::Static:
+			contextContract = funDef->annotation().contract;
+			break;
 		}
 		return {funDef, contextContract};
 	};
@@ -2688,7 +2689,29 @@ vector<VariableDeclaration const*> SMTEncoder::stateVariablesIncludingInheritedA
 
 vector<VariableDeclaration const*> SMTEncoder::localVariablesIncludingModifiers(FunctionDefinition const& _function, ContractDefinition const* _contract)
 {
-	return _function.localVariables() + modifiersVariables(_function, _contract);
+	return _function.localVariables() + tryCatchVariables(_function) + modifiersVariables(_function, _contract);
+}
+
+vector<VariableDeclaration const*> SMTEncoder::tryCatchVariables(FunctionDefinition const& _function)
+{
+	struct TryCatchVarsVisitor : public ASTConstVisitor
+	{
+		bool visit(TryCatchClause const& _catchClause) override
+		{
+			if (_catchClause.parameters())
+			{
+				auto const& params = _catchClause.parameters()->parameters();
+				for (auto param: params)
+					vars.push_back(param.get());
+			}
+
+			return true;
+		}
+
+		vector<VariableDeclaration const*> vars;
+	} tryCatchVarsVisitor;
+	_function.accept(tryCatchVarsVisitor);
+	return tryCatchVarsVisitor.vars;
 }
 
 vector<VariableDeclaration const*> SMTEncoder::modifiersVariables(FunctionDefinition const& _function, ContractDefinition const* _contract)

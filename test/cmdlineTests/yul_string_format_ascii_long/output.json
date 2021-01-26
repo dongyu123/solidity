@@ -34,10 +34,11 @@ object \"C_11\" {
                 case 0x26121ff0
                 {
                     // f()
+
                     if callvalue() { revert(0, 0) }
                     abi_decode_tuple_(4, calldatasize())
                     let ret_0 :=  fun_f_10()
-                    let memPos := allocateMemory(0)
+                    let memPos := allocate_memory(0)
                     let memEnd := abi_encode_tuple_t_string_memory_ptr__to_t_string_memory_ptr__fromStack(memPos , ret_0)
                     return(memPos, sub(memEnd, memPos))
                 }
@@ -67,28 +68,28 @@ object \"C_11\" {
 
             }
 
-            function allocateMemory(size) -> memPtr {
-                memPtr := mload(64)
-                let newFreePtr := add(memPtr, size)
-                // protect against overflow
-                if or(gt(newFreePtr, 0xffffffffffffffff), lt(newFreePtr, memPtr)) { panic_error_0x41() }
-                mstore(64, newFreePtr)
+            function allocate_memory(size) -> memPtr {
+                memPtr := allocate_unbounded()
+                finalize_allocation(memPtr, size)
             }
 
             function allocate_memory_array_t_string_memory_ptr(length) -> memPtr {
                 let allocSize := array_allocation_size_t_string_memory_ptr(length)
-                memPtr := allocateMemory(allocSize)
+                memPtr := allocate_memory(allocSize)
 
                 mstore(memPtr, length)
 
+            }
+
+            function allocate_unbounded() -> memPtr {
+                memPtr := mload(64)
             }
 
             function array_allocation_size_t_string_memory_ptr(length) -> size {
                 // Make sure we can allocate memory without overflow
                 if gt(length, 0xffffffffffffffff) { panic_error_0x41() }
 
-                // round up
-                size := and(add(length, 0x1f), not(0x1f))
+                size := round_up_to_mul_of_32(length)
 
                 // add length slot
                 size := add(size, 0x20)
@@ -126,6 +127,13 @@ object \"C_11\" {
                     // clear end
                     mstore(add(dst, length), 0)
                 }
+            }
+
+            function finalize_allocation(memPtr, size) {
+                let newFreePtr := add(memPtr, round_up_to_mul_of_32(size))
+                // protect against overflow
+                if or(gt(newFreePtr, 0xffffffffffffffff), lt(newFreePtr, memPtr)) { panic_error_0x41() }
+                mstore(64, newFreePtr)
             }
 
             function fun_f_10() -> vloc__5_mpos {

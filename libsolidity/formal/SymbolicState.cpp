@@ -128,19 +128,23 @@ smtutil::Expression SymbolicState::txMember(string const& _member) const
 
 smtutil::Expression SymbolicState::txConstraints(FunctionDefinition const& _function) const
 {
-	smtutil::Expression conj = smt::symbolicUnknownConstraints(m_tx.member("block.coinbase"), TypeProvider::uint(160)) &&
-		smt::symbolicUnknownConstraints(m_tx.member("block.chainid"), TypeProvider::uint256()) &&
+	smtutil::Expression conj = smt::symbolicUnknownConstraints(m_tx.member("block.chainid"), TypeProvider::uint256()) &&
+		smt::symbolicUnknownConstraints(m_tx.member("block.coinbase"), TypeProvider::address()) &&
 		smt::symbolicUnknownConstraints(m_tx.member("block.difficulty"), TypeProvider::uint256()) &&
 		smt::symbolicUnknownConstraints(m_tx.member("block.gaslimit"), TypeProvider::uint256()) &&
 		smt::symbolicUnknownConstraints(m_tx.member("block.number"), TypeProvider::uint256()) &&
 		smt::symbolicUnknownConstraints(m_tx.member("block.timestamp"), TypeProvider::uint256()) &&
-		smt::symbolicUnknownConstraints(m_tx.member("msg.sender"), TypeProvider::uint(160)) &&
-		smt::symbolicUnknownConstraints(m_tx.member("tx.origin"), TypeProvider::uint(160));
+		smt::symbolicUnknownConstraints(m_tx.member("msg.sender"), TypeProvider::address()) &&
+		smt::symbolicUnknownConstraints(m_tx.member("msg.value"), TypeProvider::uint256()) &&
+		smt::symbolicUnknownConstraints(m_tx.member("tx.origin"), TypeProvider::address()) &&
+		smt::symbolicUnknownConstraints(m_tx.member("tx.gasprice"), TypeProvider::uint256());
 
 	if (_function.isPartOfExternalInterface())
 	{
 		auto sig = TypeProvider::function(_function)->externalIdentifier();
 		conj = conj && m_tx.member("msg.sig") == sig;
+		if (!_function.isPayable())
+			conj = conj && m_tx.member("msg.value") == 0;
 
 		auto b0 = sig >> (3 * 8);
 		auto b1 = (sig & 0x00ff0000) >> (2 * 8);
@@ -203,15 +207,20 @@ void SymbolicState::buildABIFunctions(set<FunctionCall const*> const& _abiFuncti
 		if (t->kind() == FunctionType::Kind::ABIDecode)
 		{
 			/// abi.decode : (bytes, tuple_of_types(return_types)) -> (return_types)
+			solAssert(args.size() == 2, "Unexpected number of arguments for abi.decode");
 			inTypes.emplace_back(TypeProvider::bytesMemory());
-			auto const* tupleType = dynamic_cast<TupleType const*>(args.at(1)->annotation().type);
-			solAssert(tupleType, "");
-			for (auto t: tupleType->components())
-			{
-				auto typeType = dynamic_cast<TypeType const*>(t);
-				solAssert(typeType, "");
+			auto argType = args.at(1)->annotation().type;
+			if (auto const* tupleType = dynamic_cast<TupleType const*>(argType))
+				for (auto componentType: tupleType->components())
+				{
+					auto typeType = dynamic_cast<TypeType const*>(componentType);
+					solAssert(typeType, "");
+					outTypes.emplace_back(typeType->actualType());
+				}
+			else if (auto const* typeType = dynamic_cast<TypeType const*>(argType))
 				outTypes.emplace_back(typeType->actualType());
-			}
+			else
+				solAssert(false, "Unexpected argument of abi.decode");
 		}
 		else
 		{
@@ -264,14 +273,14 @@ void SymbolicState::buildABIFunctions(set<FunctionCall const*> const& _abiFuncti
 		/// Otherwise we create a tuple wrapping the necessary input or output types.
 		auto typesToSort = [](auto const& _types, string const& _name) -> shared_ptr<Sort> {
 			if (_types.size() == 1)
-				return smtSort(*_types.front());
+				return smtSortAbstractFunction(*_types.front());
 
 			vector<string> inNames;
 			vector<SortPointer> sorts;
 			for (unsigned i = 0; i < _types.size(); ++i)
 			{
 				inNames.emplace_back(_name + "_input_" + to_string(i));
-				sorts.emplace_back(smtSort(*_types.at(i)));
+				sorts.emplace_back(smtSortAbstractFunction(*_types.at(i)));
 			}
 			return make_shared<smtutil::TupleSort>(
 				_name + "_input",

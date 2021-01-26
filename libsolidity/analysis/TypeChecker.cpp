@@ -34,10 +34,14 @@
 
 #include <libsolutil/Algorithms.h>
 #include <libsolutil/StringUtils.h>
+#include <libsolutil/Views.h>
 
 #include <boost/algorithm/string/join.hpp>
 #include <boost/algorithm/string/predicate.hpp>
 #include <boost/range/adaptor/reversed.hpp>
+
+#include <range/v3/view/zip.hpp>
+#include <range/v3/view/drop_exactly.hpp>
 
 #include <memory>
 #include <vector>
@@ -535,15 +539,6 @@ bool TypeChecker::visit(VariableDeclaration const& _variable)
 	}
 	if (_variable.isConstant())
 	{
-		if (!_variable.type()->isValueType())
-		{
-			bool allowed = false;
-			if (auto arrayType = dynamic_cast<ArrayType const*>(_variable.type()))
-				allowed = arrayType->isByteArray();
-			if (!allowed)
-				m_errorReporter.typeError(9259_error, _variable.location(), "Constants of non-value type not yet implemented.");
-		}
-
 		if (!_variable.value())
 			m_errorReporter.typeError(4266_error, _variable.location(), "Uninitialized \"constant\" variable.");
 		else if (!*_variable.value()->annotation().isPure)
@@ -776,6 +771,16 @@ bool TypeChecker::visit(InlineAssembly const& _inlineAssembly)
 			}
 			if (var->isConstant())
 			{
+				if (isConstantVariableRecursive(*var))
+				{
+					m_errorReporter.typeError(
+						3558_error,
+						_identifier.location,
+						"Constant variable is circular."
+					);
+					return false;
+				}
+
 				var = rootConstVariableDeclaration(*var);
 
 				if (var && !var->value())
@@ -998,18 +1003,17 @@ void TypeChecker::endVisit(TryStatement const& _tryStatement)
 				to_string(parameters.size()) +
 				" variables."
 			);
-		size_t len = min(returnTypes.size(), parameters.size());
-		for (size_t i = 0; i < len; ++i)
+		for (auto&& [parameter, returnType]: ranges::views::zip(parameters, returnTypes))
 		{
-			solAssert(returnTypes[i], "");
-			if (parameters[i] && *parameters[i]->annotation().type != *returnTypes[i])
+			solAssert(returnType, "");
+			if (parameter && *parameter->annotation().type != *returnType)
 				m_errorReporter.typeError(
 					6509_error,
-					parameters[i]->location(),
+					parameter->location(),
 					"Invalid type, expected " +
-					returnTypes[i]->toString(false) +
+					returnType->toString(false) +
 					" but got " +
-					parameters[i]->annotation().type->toString() +
+					parameter->annotation().type->toString() +
 					"."
 				);
 		}
@@ -1018,9 +1022,8 @@ void TypeChecker::endVisit(TryStatement const& _tryStatement)
 	TryCatchClause const* panicClause = nullptr;
 	TryCatchClause const* errorClause = nullptr;
 	TryCatchClause const* lowLevelClause = nullptr;
-	for (size_t i = 1; i < _tryStatement.clauses().size(); ++i)
+	for (auto const& clause: _tryStatement.clauses() | ranges::views::drop_exactly(1) | views::dereferenceChecked)
 	{
-		TryCatchClause const& clause = *_tryStatement.clauses()[i];
 		if (clause.errorName() == "")
 		{
 			if (lowLevelClause)

@@ -94,16 +94,20 @@ string IRGenerator::generate(
 			code {
 				<memoryInitCreation>
 				<callValueCheck>
-				<?notLibrary>
+				<?library>
+				<!library>
 				<?constructorHasParams> let <constructorParams> := <copyConstructorArguments>() </constructorHasParams>
 				<implicitConstructor>(<constructorParams>)
-				</notLibrary>
+				</library>
 				<deploy>
 				<functions>
 			}
 			object "<RuntimeObject>" {
 				code {
 					<memoryInitRuntime>
+					<?library>
+					let called_via_delegatecall := iszero(eq(loadimmutable("<library_address>"), address()))
+					</library>
 					<dispatch>
 					<runtimeFunctions>
 				}
@@ -118,7 +122,7 @@ string IRGenerator::generate(
 		m_context.registerImmutableVariable(*var);
 
 	t("CreationObject", IRNames::creationObject(_contract));
-	t("notLibrary", !_contract.isLibrary());
+	t("library", _contract.isLibrary());
 
 	FunctionDefinition const* constructor = _contract.constructor();
 	t("callValueCheck", !constructor || !constructor->isPayable() ? callValueCheck() : "");
@@ -156,6 +160,7 @@ string IRGenerator::generate(
 
 	// Do not register immutables to avoid assignment.
 	t("RuntimeObject", IRNames::runtimeObject(_contract));
+	t("library_address", IRNames::libraryAddressImmutable());
 	t("dispatch", dispatchRoutine(_contract));
 	generateQueuedFunctions();
 	generateInternalDispatchFunctions();
@@ -333,14 +338,24 @@ string IRGenerator::generateModifier(
 		t("retParams", joinHumanReadable(retParams));
 		t("assignRetParams", assignRetParams);
 
-		solAssert(*_modifierInvocation.name().annotation().requiredLookup == VirtualLookup::Virtual, "");
-
-		ModifierDefinition const& modifier = dynamic_cast<ModifierDefinition const&>(
-			*_modifierInvocation.name().annotation().referencedDeclaration
-		).resolveVirtual(m_context.mostDerivedContract());
+		ModifierDefinition const* modifier = dynamic_cast<ModifierDefinition const*>(
+			_modifierInvocation.name().annotation().referencedDeclaration
+		);
+		solAssert(modifier, "");
+		switch (*_modifierInvocation.name().annotation().requiredLookup)
+		{
+		case VirtualLookup::Virtual:
+			modifier = &modifier->resolveVirtual(m_context.mostDerivedContract());
+			solAssert(modifier, "");
+			break;
+		case VirtualLookup::Static:
+			break;
+		case VirtualLookup::Super:
+			solAssert(false, "");
+		}
 
 		solAssert(
-			modifier.parameters().empty() ==
+			modifier->parameters().empty() ==
 			(!_modifierInvocation.arguments() || _modifierInvocation.arguments()->empty()),
 			""
 		);
@@ -350,10 +365,10 @@ string IRGenerator::generateModifier(
 			{
 				IRVariable argument = expressionEvaluator.evaluateExpression(
 					*_modifierInvocation.arguments()->at(i),
-					*modifier.parameters()[i]->annotation().type
+					*modifier->parameters()[i]->annotation().type
 				);
 				expressionEvaluator.define(
-					m_context.addLocalVariable(*modifier.parameters()[i]),
+					m_context.addLocalVariable(*modifier->parameters()[i]),
 					argument
 				);
 			}
@@ -365,7 +380,7 @@ string IRGenerator::generateModifier(
 				(ret.empty() ? "" : ret + " := ") +
 				_nextFunction + "(" + joinHumanReadable(params) + ")\n";
 		});
-		generator.generate(modifier.body());
+		generator.generate(modifier->body());
 		t("body", generator.code());
 		return t.render();
 	});
@@ -747,20 +762,30 @@ string IRGenerator::deployCode(ContractDefinition const& _contract)
 	vector<map<string, string>> loadImmutables;
 	vector<map<string, string>> storeImmutables;
 
-	for (VariableDeclaration const* immutable: ContractType(_contract).immutableVariables())
+	if (_contract.isLibrary())
 	{
-		solUnimplementedAssert(immutable->type()->isValueType(), "");
-		solUnimplementedAssert(immutable->type()->sizeOnStack() == 1, "");
-		string yulVar = m_context.newYulVariable();
-		loadImmutables.emplace_back(map<string, string>{
-			{"var"s, yulVar},
-			{"memoryOffset"s, to_string(m_context.immutableMemoryOffset(*immutable))}
-		});
+		solAssert(ContractType(_contract).immutableVariables().empty(), "");
 		storeImmutables.emplace_back(map<string, string>{
-			{"var"s, yulVar},
-			{"immutableName"s, to_string(immutable->id())}
+			{"var"s, "address()"},
+			{"immutableName"s, IRNames::libraryAddressImmutable()}
 		});
+
 	}
+	else
+		for (VariableDeclaration const* immutable: ContractType(_contract).immutableVariables())
+		{
+			solUnimplementedAssert(immutable->type()->isValueType(), "");
+			solUnimplementedAssert(immutable->type()->sizeOnStack() == 1, "");
+			string yulVar = m_context.newYulVariable();
+			loadImmutables.emplace_back(map<string, string>{
+				{"var"s, yulVar},
+				{"memoryOffset"s, to_string(m_context.immutableMemoryOffset(*immutable))}
+			});
+			storeImmutables.emplace_back(map<string, string>{
+				{"var"s, yulVar},
+				{"immutableName"s, to_string(immutable->id())}
+			});
+		}
 	t("loadImmutables", std::move(loadImmutables));
 	// reverse order to ease stack strain
 	reverse(storeImmutables.begin(), storeImmutables.end());
@@ -770,7 +795,7 @@ string IRGenerator::deployCode(ContractDefinition const& _contract)
 
 string IRGenerator::callValueCheck()
 {
-	return "if callvalue() { revert(0, 0) }";
+	return "if callvalue() { " + m_context.revertReasonIfDebug("Ether sent to non-payable function") + " }";
 }
 
 string IRGenerator::dispatchRoutine(ContractDefinition const& _contract)
@@ -784,6 +809,7 @@ string IRGenerator::dispatchRoutine(ContractDefinition const& _contract)
 			case <functionSelector>
 			{
 				// <functionName>
+				<delegatecallCheck>
 				<callValueCheck>
 				<?+params>let <params> := </+params> <abiDecode>(4, calldatasize())
 				<?+retParams>let <retParams> := </+retParams> <function>(<params>)
@@ -806,7 +832,20 @@ string IRGenerator::dispatchRoutine(ContractDefinition const& _contract)
 		templ["functionSelector"] = "0x" + function.first.hex();
 		FunctionTypePointer const& type = function.second;
 		templ["functionName"] = type->externalSignature();
-		templ["callValueCheck"] = type->isPayable() ? "" : callValueCheck();
+		string delegatecallCheck;
+		if (_contract.isLibrary())
+		{
+			solAssert(!type->isPayable(), "");
+			if (type->stateMutability() > StateMutability::View)
+				// If the function is not a view function and is called without DELEGATECALL,
+				// we revert.
+				delegatecallCheck =
+					"if iszero(called_via_delegatecall) { " +
+					m_context.revertReasonIfDebug("Non-view function of library called without DELEGATECALL") +
+					" }";
+		}
+		templ["delegatecallCheck"] = delegatecallCheck;
+		templ["callValueCheck"] = (type->isPayable() || _contract.isLibrary()) ? "" : callValueCheck();
 
 		unsigned paramVars = make_shared<TupleType>(type->parameterTypes())->sizeOnStack();
 		unsigned retVars = make_shared<TupleType>(type->returnParameterTypes())->sizeOnStack();
@@ -824,11 +863,20 @@ string IRGenerator::dispatchRoutine(ContractDefinition const& _contract)
 			solAssert(false, "Unexpected declaration for function!");
 
 		templ["allocate"] = m_utils.allocationFunction();
-		templ["abiEncode"] = abiFunctions.tupleEncoder(type->returnParameterTypes(), type->returnParameterTypes(), false);
+		templ["abiEncode"] = abiFunctions.tupleEncoder(type->returnParameterTypes(), type->returnParameterTypes(), _contract.isLibrary());
 	}
 	t("cases", functions);
+	FunctionDefinition const* etherReceiver = _contract.receiveFunction();
+	if (etherReceiver)
+	{
+		solAssert(!_contract.isLibrary(), "");
+		t("receiveEther", m_context.enqueueFunctionForCodeGeneration(*etherReceiver) + "() stop()");
+	}
+	else
+		t("receiveEther", "");
 	if (FunctionDefinition const* fallback = _contract.fallbackFunction())
 	{
+		solAssert(!_contract.isLibrary(), "");
 		string fallbackCode;
 		if (!fallback->isPayable())
 			fallbackCode += callValueCheck() + "\n";
@@ -845,11 +893,12 @@ string IRGenerator::dispatchRoutine(ContractDefinition const& _contract)
 		t("fallback", fallbackCode);
 	}
 	else
-		t("fallback", "revert(0, 0)");
-	if (FunctionDefinition const* etherReceiver = _contract.receiveFunction())
-		t("receiveEther", m_context.enqueueFunctionForCodeGeneration(*etherReceiver) + "() stop()");
-	else
-		t("receiveEther", "");
+		t(
+			"fallback",
+			etherReceiver ?
+			m_context.revertReasonIfDebug("Unknown signature and no fallback defined") :
+			m_context.revertReasonIfDebug("Contract does not have fallback nor receive functions")
+		);
 	return t.render();
 }
 

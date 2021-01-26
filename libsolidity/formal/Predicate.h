@@ -37,6 +37,9 @@ enum class PredicateType
 	ConstructorSummary,
 	FunctionSummary,
 	FunctionBlock,
+	InternalCall,
+	ExternalCallTrusted,
+	ExternalCallUntrusted,
 	Error,
 	Custom
 };
@@ -92,11 +95,27 @@ public:
 	/// or nullptr otherwise.
 	FunctionDefinition const* programFunction() const;
 
+	/// @returns the FunctionCall that this predicate represents
+	/// or nullptr otherwise.
+	FunctionCall const* programFunctionCall() const;
+
 	/// @returns the program state variables in the scope of this predicate.
 	std::optional<std::vector<VariableDeclaration const*>> stateVariables() const;
 
 	/// @returns true if this predicate represents a summary.
 	bool isSummary() const;
+
+	/// @returns true if this predicate represents a function summary.
+	bool isFunctionSummary() const;
+
+	/// @returns true if this predicate represents an internal function call.
+	bool isInternalCall() const;
+
+	/// @returns true if this predicate represents a trusted external function call.
+	bool isExternalCallTrusted() const;
+
+	/// @returns true if this predicate represents an untrusted external function call.
+	bool isExternalCallUntrusted() const;
 
 	/// @returns true if this predicate represents a constructor summary.
 	bool isConstructorSummary() const;
@@ -134,6 +153,8 @@ private:
 	/// @returns true if the construction worked,
 	/// and false if at least one element could not be built.
 	bool fillArray(smtutil::Expression const& _expr, std::vector<std::string>& _array, ArrayType const& _type) const;
+
+	std::map<std::string, std::optional<std::string>> readTxVars(smtutil::Expression const& _tx) const;
 
 	/// The actual SMT expression.
 	smt::SymbolicFunctionVariable m_predicate;

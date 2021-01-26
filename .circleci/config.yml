@@ -9,20 +9,20 @@ version: 2.1
 parameters:
   ubuntu-2004-docker-image:
     type: string
-    # solbuildpackpusher/solidity-buildpack-deps:ubuntu2004-4
-    default: "solbuildpackpusher/solidity-buildpack-deps@sha256:aca1372dcc5edadd3db13ff1aa6807727d79e08082a48eb7cc05444c1b516ace"
+    # solbuildpackpusher/solidity-buildpack-deps:ubuntu2004-5
+    default: "solbuildpackpusher/solidity-buildpack-deps@sha256:2d306b8da3485c2584a8868d656dc36c1ae50f003ff085ad2e904e312534b9b7"
   ubuntu-2004-clang-docker-image:
     type: string
-    # solbuildpackpusher/solidity-buildpack-deps:ubuntu2004.clang-4
-    default: "solbuildpackpusher/solidity-buildpack-deps@sha256:0954edfb48a7efa6922b4d6adf536a2fc483ca34ad62f95ec54c33a616a66974"
+    # solbuildpackpusher/solidity-buildpack-deps:ubuntu2004.clang-5
+    default: "solbuildpackpusher/solidity-buildpack-deps@sha256:4fbc7a99dd0b204fef587856d89640e4b2060d459ba15c32b89733b2a6054d7f"
   ubuntu-1604-clang-ossfuzz-docker-image:
     type: string
-    # solbuildpackpusher/solidity-buildpack-deps:ubuntu1604.clang.ossfuzz-7
-    default: "solbuildpackpusher/solidity-buildpack-deps@sha256:8cbbb722b7f919264d73f61cb79cd555469f6f1d3d153b1c848a60b391faee39"
+    # solbuildpackpusher/solidity-buildpack-deps:ubuntu1604.clang.ossfuzz-8
+    default: "solbuildpackpusher/solidity-buildpack-deps@sha256:42f47b7ddafbf57b4e48357022cf34dc38ae477b05ddc2210e7ed68d821c2019"
   emscripten-docker-image:
     type: string
-    # solbuildpackpusher/solidity-buildpack-deps:emscripten-2
-    default: "solbuildpackpusher/solidity-buildpack-deps@sha256:23dad3b34deae8107c8551804ef299f6a89c23ed506e8118fac151e2bdc9018c"
+    # solbuildpackpusher/solidity-buildpack-deps:emscripten-4
+    default: "solbuildpackpusher/solidity-buildpack-deps@sha256:434719d8104cab47712dd1f56f255994d04eb65b802c0d382790071c1a0c074b"
 
 orbs:
   win: circleci/windows@2.2.0
@@ -446,6 +446,26 @@ jobs:
     steps:
       - checkout
       - run: *run_docs_pragma_min_version
+
+  t_pyscripts_ubu:
+    docker:
+      - image: << pipeline.parameters.ubuntu-2004-docker-image >>
+    steps:
+      - checkout
+      - run:
+          name: Python unit tests
+          command: python3 test/pyscriptTests.py
+
+  t_pyscripts_win:
+    executor:
+      name: win/default
+      shell: powershell.exe
+    steps:
+      - run: git config --global core.autocrlf false
+      - checkout
+      - run:
+          name: Python unit tests
+          command: python.exe test/pyscriptTests.py
 
   b_ubu_clang: &build_ubuntu2004_clang
     # resource_class: xlarge
@@ -877,6 +897,7 @@ jobs:
       name: win/default
       shell: powershell.exe
     steps:
+      # NOTE: Not disabling git's core.autocrlf here because we want to build using the typical Windows config.
       - checkout
       - restore_cache:
           keys:
@@ -913,6 +934,8 @@ jobs:
       name: win/default
       shell: powershell.exe
     steps:
+      # NOTE: Git's default core.autocrlf is fine for running soltest. We get additional coverage
+      # for files using CRLF that way.
       - checkout
       - attach_workspace:
           at: build
@@ -965,6 +988,9 @@ jobs:
       name: win/default
       shell: cmd.exe
     steps:
+      # NOTE: For bytecode generation we need the input files to be byte-for-byte identical on all
+      # platforms so line ending conversions must absolutely be disabled.
+      - run: git config --global core.autocrlf false
       - checkout
       - attach_workspace:
           at: build
@@ -1121,6 +1147,8 @@ workflows:
       - chk_errorcodes: *workflow_trigger_on_tags
       - chk_antlr_grammar: *workflow_trigger_on_tags
       - chk_docs_pragma_min_version: *workflow_trigger_on_tags
+      - t_pyscripts_ubu: *workflow_trigger_on_tags
+      - t_pyscripts_win: *workflow_trigger_on_tags
 
       # solc-verify build and tests
       - b_ubu_sverif: *workflow_trigger_on_tags

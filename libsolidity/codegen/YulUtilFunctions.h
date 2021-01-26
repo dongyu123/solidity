@@ -212,8 +212,10 @@ public:
 	std::string storageArrayPopFunction(ArrayType const& _type);
 
 	/// @returns the name of a function that pushes an element to a storage array
+/// @param _fromType represents the type of the element being pushed.
+/// If _fromType is ReferenceType the function will perform deep copy.
 	/// signature: (array, value)
-	std::string storageArrayPushFunction(ArrayType const& _type);
+	std::string storageArrayPushFunction(ArrayType const& _type, TypePointer _fromType = nullptr);
 
 	/// @returns the name of a function that pushes the base type's zero element to a storage array and returns storage slot and offset of the added element.
 	/// signature: (array) -> slot, offset
@@ -350,16 +352,20 @@ public:
 
 	/// @returns the name of a function that allocates memory.
 	/// Modifies the "free memory pointer"
-	/// Arguments: size
-	/// Return value: pointer
+	/// signature: (size) -> memPtr
 	std::string allocationFunction();
 
-	/// @returns the name of the function that allocates temporary memory with predefined size
-	/// Return value: pointer
-	std::string allocationTemporaryMemoryFunction();
+	/// @returns the name of the function that allocates memory whose size might be defined later.
+	/// The allocation can be finalized using finalizeAllocationFunction.
+	/// Any other allocation will invalidate the memory pointer unless finalizeAllocationFunction
+	/// is called.
+	/// signature: () -> memPtr
+	std::string allocateUnboundedFunction();
 
-	/// @returns the name of the function that releases previously allocated temporary memory
-	std::string releaseTemporaryMemoryFunction();
+	/// @returns the name of the function that finalizes an unbounded memory allocation,
+	/// i.e. sets its size and makes the allocation permanent.
+	/// signature: (memPtr, size) ->
+	std::string finalizeAllocationFunction();
 
 	/// @returns the name of a function that zeroes an array.
 	/// signature: (dataStart, dataSizeInBytes) ->
@@ -483,6 +489,10 @@ public:
 	std::string externalCodeFunction();
 
 private:
+/// @returns the name of a function that copies a struct from calldata or memory to storage
+	/// signature: (slot, value) ->
+	std::string copyStructToStorageFunction(StructType const& _from, StructType const& _to);
+
 	/// Special case of conversion functions - handles all array conversions.
 	std::string arrayConversionFunction(ArrayType const& _from, ArrayType const& _to);
 

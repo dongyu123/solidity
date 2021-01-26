@@ -87,6 +87,7 @@ public:
 	bool visit(BinaryOperation const& _binOp) override;
 	void endVisit(FunctionCall const& _funCall) override;
 	void endVisit(FunctionCallOptions const& _funCallOptions) override;
+	bool visit(MemberAccess const& _memberAccess) override;
 	void endVisit(MemberAccess const& _memberAccess) override;
 	bool visit(InlineAssembly const& _inlineAsm) override;
 	void endVisit(IndexAccess const& _indexAccess) override;
@@ -123,10 +124,6 @@ private:
 		FunctionCall const& _functionCall,
 		std::vector<ASTPointer<Expression const>> const& _arguments
 	);
-
-	/// @returns code that evaluates to the first unused memory slot (which does not have to
-	/// be empty).
-	static std::string freeMemory();
 
 	/// Generates the required conversion code and @returns an IRVariable referring to the value of @a _variable
 	/// converted to type @a _to.

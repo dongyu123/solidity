@@ -46,6 +46,8 @@
 #include <boost/range/adaptor/transformed.hpp>
 #include <boost/range/algorithm/copy.hpp>
 
+#include <range/v3/view/enumerate.hpp>
+
 #include <limits>
 #include <unordered_set>
 #include <utility>
@@ -167,8 +169,8 @@ pair<u256, unsigned> const* MemberList::memberStorageOffset(string const& _name)
 {
 	StorageOffsets const& offsets = storageOffsets();
 
-	for (size_t index = 0; index < m_memberTypes.size(); ++index)
-		if (m_memberTypes[index].name == _name)
+	for (auto&& [index, member]: m_memberTypes | ranges::views::enumerate)
+		if (member.name == _name)
 			return offsets.offset(index);
 	return nullptr;
 }
@@ -508,12 +510,13 @@ BoolResult IntegerType::isImplicitlyConvertibleTo(Type const& _convertTo) const
 	if (_convertTo.category() == category())
 	{
 		IntegerType const& convertTo = dynamic_cast<IntegerType const&>(_convertTo);
-		if (convertTo.m_bits < m_bits)
+		// disallowing unsigned to signed conversion of different bits
+		if (isSigned() != convertTo.isSigned())
 			return false;
-		else if (isSigned())
-			return convertTo.isSigned();
+		else if (convertTo.m_bits < m_bits)
+			return false;
 		else
-			return !convertTo.isSigned() || convertTo.m_bits > m_bits;
+			return true;
 	}
 	else if (_convertTo.category() == Category::FixedPoint)
 	{
