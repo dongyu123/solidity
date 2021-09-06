@@ -448,6 +448,12 @@ void BoogieContext::addDecl(bg::Decl::Ref decl)
 	m_program.getDeclarations().push_back(decl);
 }
 
+// modify here
+std::vector<bg::Decl::Ref> BoogieContext::getDecls()
+{
+	return m_program.getDeclarations();
+}
+
 bg::TypeDeclRef BoogieContext::addressType() const
 {
 	bg::TypeDeclRef it = intType(256);

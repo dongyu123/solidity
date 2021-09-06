@@ -48,6 +48,11 @@ using namespace solidity::util;
 using namespace solidity::langutil;
 using namespace solidity::frontend;
 
+/*std::ostream& sout()
+{
+	return cout;
+}*/
+
 bool TypeChecker::typeSupportedByOldABIEncoder(Type const& _type, bool _isLibraryCall)
 {
 	if (_isLibraryCall && _type.dataStoredIn(DataLocation::Storage))
@@ -82,6 +87,7 @@ bool TypeChecker::checkTypeRequirements(SourceUnit const& _source, ASTNode const
 
 bool TypeChecker::checkTypeRequirements(SourceUnit const& _source, ContractDefinition const& _contract, ASTNode const& _node)
 {
+	cout << "enter function checkTypeRequirements" << endl;
 	m_currentSourceUnit = &_source;
 	m_currentContract = &_contract;
 	_node.accept(*this);
@@ -1585,12 +1591,15 @@ bool TypeChecker::visit(UnaryOperation const& _operation)
 
 void TypeChecker::endVisit(BinaryOperation const& _operation)
 {
+	cout << "enter TypeChecker visit" <<endl;
 	TypePointer const& leftType = type(_operation.leftExpression());
 	TypePointer const& rightType = type(_operation.rightExpression());
+	cout << leftType->toString() << endl;
 	TypeResult result = leftType->binaryOperatorResult(_operation.getOperator(), rightType);
 	TypePointer commonType = result.get();
-	if (!commonType)
+	if (!commonType && _operation.getOperator() != Token::PreFunction)	// modify here
 	{
+		cout << "error happens here: endVisit" << endl;
 		m_errorReporter.typeError(
 			2271_error,
 			_operation.location(),

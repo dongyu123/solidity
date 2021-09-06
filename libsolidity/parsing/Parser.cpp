@@ -1664,6 +1664,7 @@ ASTPointer<Expression> Parser::parseExpression(
 	ASTPointer<Expression> const& _partiallyParsedExpression
 )
 {
+	cout << "enter function parseExpression" << endl;
 	RecursionGuard recursionGuard(*this);
 	ASTPointer<Expression> expression = parseBinaryExpression(4, _partiallyParsedExpression);
 	if (TokenTraits::isAssignmentOp(m_scanner->currentToken()))
@@ -1694,6 +1695,7 @@ ASTPointer<Expression> Parser::parseBinaryExpression(
 	ASTPointer<Expression> const& _partiallyParsedExpression
 )
 {
+	//cout << "enter function parseBinaryExpression" << endl;
 	RecursionGuard recursionGuard(*this);
 	ASTPointer<Expression> expression = parseUnaryExpression(_partiallyParsedExpression);
 	ASTNodeFactory nodeFactory(*this, expression);
@@ -1702,6 +1704,8 @@ ASTPointer<Expression> Parser::parseBinaryExpression(
 		while (TokenTraits::precedence(m_scanner->currentToken()) == precedence)
 		{
 			Token op = m_scanner->currentToken();
+			if(op == Token::PreFunction) cout << "token is prefunction" << endl;
+			if(op == Token::Equal) cout << "token is equal" << endl;
 			m_scanner->next();
 			ASTPointer<Expression> right = parseBinaryExpression(precedence + 1);
 			nodeFactory.setEndPositionFromNode(right);
@@ -1714,6 +1718,8 @@ ASTPointer<Expression> Parser::parseUnaryExpression(
 	ASTPointer<Expression> const& _partiallyParsedExpression
 )
 {
+
+	//cout << "enter function parseUnaryExpression" << endl;
 	RecursionGuard recursionGuard(*this);
 	ASTNodeFactory nodeFactory = _partiallyParsedExpression ?
 		ASTNodeFactory(*this, _partiallyParsedExpression) : ASTNodeFactory(*this);
@@ -1731,7 +1737,6 @@ ASTPointer<Expression> Parser::parseUnaryExpression(
 		// potential postfix expression
 		ASTPointer<Expression> subExpression = parseLeftHandSideExpression(_partiallyParsedExpression);
 		token = m_scanner->currentToken();
-
 		if (!TokenTraits::isCountOp(token))
 			return subExpression;
 		nodeFactory.markEndPosition();
@@ -1744,6 +1749,7 @@ ASTPointer<Expression> Parser::parseLeftHandSideExpression(
 	ASTPointer<Expression> const& _partiallyParsedExpression
 )
 {
+	//cout << "enter function parseLeftHandSideExpression" << endl;
 	RecursionGuard recursionGuard(*this);
 	ASTNodeFactory nodeFactory = _partiallyParsedExpression ?
 		ASTNodeFactory(*this, _partiallyParsedExpression) : ASTNodeFactory(*this);
@@ -1851,6 +1857,7 @@ ASTPointer<Expression> Parser::parseLeftHandSideExpression(
 
 ASTPointer<Expression> Parser::parsePrimaryExpression()
 {
+	//cout << "enter function parsePrimaryExpression" << endl;
 	RecursionGuard recursionGuard(*this);
 	ASTNodeFactory nodeFactory(*this);
 	Token token = m_scanner->currentToken();
@@ -1961,8 +1968,10 @@ ASTPointer<Expression> Parser::parsePrimaryExpression()
 			expression = nodeFactory.createNode<ElementaryTypeNameExpression>(expressionType);
 			m_scanner->next();
 		}
-		else
+		else {
+			cout << "error happen here: parsePrimaryExpression" << endl;
 			fatalParserError(6933_error, "Expected primary expression.");
+		}
 		break;
 	}
 	return expression;
@@ -2267,6 +2276,7 @@ ASTPointer<ASTString> Parser::getLiteralAndAdvance()
 ASTPointer<Expression> Parser::parseSpecificationExpression(SpecificationExpressionInfo& info)
 {
 	// Check if it is an array property
+	// cout << "enter function parseSpecificationExpression(info)" << endl;
 	if (m_scanner->currentToken() == Token::Identifier && m_scanner->currentLiteral() == "property")
 	{
 		Token typeToken;
@@ -2319,8 +2329,11 @@ ASTPointer<Expression> Parser::parseSpecificationExpression(std::shared_ptr<lang
 		m_scanner = _scanner;
 		auto result = parseSpecificationExpression(info);
 		solAssert(m_recursionDepth == 0, "");
-		if (m_scanner->currentToken() != Token::EOS)
+		if (m_scanner->currentToken() != Token::EOS) {
+			cout << "end of express error" << endl;
 			parserError(1553_error, string("Expected end of expression but got ") + tokenName(m_scanner->currentToken()));
+		}
+
 		return result;
 	}
 	catch (FatalError const&)
@@ -2352,8 +2365,11 @@ void Parser::parseSpecificationExpression(std::shared_ptr<langutil::Scanner> con
 		expectToken(Token::RBrack);
 
 		solAssert(m_recursionDepth == 0, "");
-		if (m_scanner->currentToken() != Token::EOS)
+		if (m_scanner->currentToken() != Token::EOS) {
+			cout << "expression error2" << endl;
 			parserError(2180_error, string("Expected end of expression but got ") + tokenName(m_scanner->currentToken()));
+		}
+
 	}
 	catch (FatalError const&)
 	{

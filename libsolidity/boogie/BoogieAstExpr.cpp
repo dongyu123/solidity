@@ -118,6 +118,12 @@ Expr::Ref Expr::gte(Ref lhs, Ref rhs)
 	return std::make_shared<BinExpr const>(BinExpr::Gte, lhs, rhs);
 }
 
+// modify here
+Expr::Ref Expr::prefunc(Ref lhs, Ref rhs)
+{
+	return std::make_shared<BinExpr const>(BinExpr::Pref, lhs, rhs);
+}
+
 Expr::Ref Expr::plus(Ref lhs, Ref rhs)
 {
 	return std::make_shared<BinExpr const>(BinExpr::Plus, lhs, rhs);
@@ -343,6 +349,9 @@ void BinExpr::printBg(std::ostream& os) const
 		break;
 	case Gte:
 		os << ">=";
+		break;
+	case Pref:
+		os << "==>";
 		break;
 	case Sub:
 		os << "<:";
@@ -817,6 +826,7 @@ int Expr::cmp(Expr::Ref e1, Expr::Ref e2)
 	case Kind::GT: return CmpHelper<BinExpr>::cmp(e1, e2);
 	case Kind::LTE: return CmpHelper<BinExpr>::cmp(e1, e2);
 	case Kind::GTE: return CmpHelper<BinExpr>::cmp(e1, e2);
+	case Kind::PreFunction: return CmpHelper<BinExpr>::cmp(e1, e2); // modify here
 	case Kind::PLUS: return CmpHelper<BinExpr>::cmp(e1, e2);
 	case Kind::MINUS: return CmpHelper<BinExpr>::cmp(e1, e2);
 	case Kind::SUB: return CmpHelper<BinExpr>::cmp(e1, e2);
@@ -863,6 +873,7 @@ Expr::Kind BinExpr::kind() const {
 	case Gt: return Kind::GT;
 	case Lte: return Kind::LTE;
 	case Gte: return Kind::GTE;
+	case Pref: return Kind::PreFunction;
 	case Sub: return Kind::SUB;
 	case Conc: return Kind::CONCAT;
 	case Plus: return Kind::PLUS;

@@ -20,12 +20,16 @@ class ASTBoogieConverter : private ASTConstVisitor
 private:
 	BoogieContext& m_context;
 
+	// modify here - contract
+	std::vector<BoogieContext*> contexts;
+
 	// Helper variables to pass information between the visit methods
 	FunctionDefinition const* m_currentFunc; // Function currently being processed
 	unsigned long m_currentModifier; // Index of the current modifier being processed
 
 	// Collect local variable declarations (Boogie requires them at the beginning of the function).
 	std::vector<boogie::Decl::Ref> m_localDecls;
+	std::vector<boogie::Decl::Ref> m_newDecls;	// modify here 只在ExpressionConverter里有，所以加到BoogieConverter里
 
 	// Current block(s) where statements are appended (stack is needed due to nested blocks)
 	std::stack<boogie::Block::Ref> m_currentBlocks;
@@ -44,6 +48,9 @@ private:
 	// Events specified by the current function and whether they are indeed emitted
 	std::set<EventDefinition const*> m_currentEmits;
 
+
+
+	void createPrefuncProc(ContractDefinition const& _node); // modify here
 	/**
 	 * Helper method to convert an expression using the dedicated expression converter class,
 	 * it also handles side-effect statements and declarations introduced by the conversion.
@@ -199,6 +206,11 @@ public:
 	 * Convert a node and add it to the actual Boogie program.
 	 */
 	void convert(ASTNode const& _node) { _node.accept(*this); }
+
+	//void convert2BgExpr(boogie::Expr::Ref lhs, boogie::Expr::Ref rhs); // modify here
+
+
+
 
 	// Top-level nodes
 	bool visit(SourceUnit const& _node) override;

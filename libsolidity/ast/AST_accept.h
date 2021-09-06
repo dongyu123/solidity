@@ -94,6 +94,7 @@ void ContractDefinition::accept(ASTVisitor& _visitor)
 
 void ContractDefinition::accept(ASTConstVisitor& _visitor) const
 {
+	std::cout << "enter accept-ContractDefinition" << std::endl;
 	if (_visitor.visit(*this))
 	{
 		if (m_documentation)
@@ -117,6 +118,7 @@ void InheritanceSpecifier::accept(ASTVisitor& _visitor)
 
 void InheritanceSpecifier::accept(ASTConstVisitor& _visitor) const
 {
+	std::cout << "enter accept-InheritanceSpecifier" << std::endl;
 	if (_visitor.visit(*this))
 	{
 		m_baseName->accept(_visitor);
@@ -135,6 +137,7 @@ void EnumDefinition::accept(ASTVisitor& _visitor)
 
 void EnumDefinition::accept(ASTConstVisitor& _visitor) const
 {
+	std::cout << "enter accept-EnumDefinition" << std::endl;
 	if (_visitor.visit(*this))
 		listAccept(m_members, _visitor);
 	_visitor.endVisit(*this);
@@ -236,6 +239,7 @@ void FunctionDefinition::accept(ASTVisitor& _visitor)
 
 void FunctionDefinition::accept(ASTConstVisitor& _visitor) const
 {
+	std::cout << "enter accept-FunctionDefinition" << std::endl;
 	if (_visitor.visit(*this))
 	{
 		if (m_documentation)
@@ -268,6 +272,7 @@ void VariableDeclaration::accept(ASTVisitor& _visitor)
 
 void VariableDeclaration::accept(ASTConstVisitor& _visitor) const
 {
+	std::cout << "enter accept-VariableDeclaration" << std::endl;
 	if (_visitor.visit(*this))
 	{
 		if (m_typeName)
@@ -374,6 +379,7 @@ void UserDefinedTypeName::accept(ASTVisitor& _visitor)
 
 void UserDefinedTypeName::accept(ASTConstVisitor& _visitor) const
 {
+	std::cout << "enter accept-UserDefinedTypeName" << std::endl;
 	_visitor.visit(*this);
 	_visitor.endVisit(*this);
 }
@@ -390,6 +396,7 @@ void FunctionTypeName::accept(ASTVisitor& _visitor)
 
 void FunctionTypeName::accept(ASTConstVisitor& _visitor) const
 {
+	std::cout << "enter accept-FunctionTypeName" << std::endl;
 	if (_visitor.visit(*this))
 	{
 		m_parameterTypes->accept(_visitor);
@@ -454,6 +461,7 @@ void InlineAssembly::accept(ASTConstVisitor& _visitor) const
 
 void Block::accept(ASTVisitor& _visitor)
 {
+	std::cout << "enter accept-Block" << std::endl;
 	if (_visitor.visit(*this))
 		listAccept(m_statements, _visitor);
 	_visitor.endVisit(*this);
@@ -461,6 +469,7 @@ void Block::accept(ASTVisitor& _visitor)
 
 void Block::accept(ASTConstVisitor& _visitor) const
 {
+	std::cout << "enter accept-Block" << std::endl;
 	if (_visitor.visit(*this))
 		listAccept(m_statements, _visitor);
 	_visitor.endVisit(*this);
@@ -670,6 +679,7 @@ void ExpressionStatement::accept(ASTVisitor& _visitor)
 
 void ExpressionStatement::accept(ASTConstVisitor& _visitor) const
 {
+	std::cout << "enter accept-ExpressionStatement" << std::endl;
 	if (_visitor.visit(*this))
 		if (m_expression)
 			m_expression->accept(_visitor);
@@ -691,6 +701,7 @@ void VariableDeclarationStatement::accept(ASTVisitor& _visitor)
 
 void VariableDeclarationStatement::accept(ASTConstVisitor& _visitor) const
 {
+	std::cout << "enter accept-VariableDeclarationStatement" << std::endl;
 	if (_visitor.visit(*this))
 	{
 		for (ASTPointer<VariableDeclaration> const& var: m_variables)
@@ -755,6 +766,7 @@ void TupleExpression::accept(ASTVisitor& _visitor)
 
 void TupleExpression::accept(ASTConstVisitor& _visitor) const
 {
+	std::cout << "enter accept-TupleExpression" << std::endl;
 	if (_visitor.visit(*this))
 		for (auto const& component: m_components)
 			if (component)
@@ -771,6 +783,7 @@ void UnaryOperation::accept(ASTVisitor& _visitor)
 
 void UnaryOperation::accept(ASTConstVisitor& _visitor) const
 {
+	std::cout << "enter accept-UnaryOperation" << std::endl;
 	if (_visitor.visit(*this))
 		m_subExpression->accept(_visitor);
 	_visitor.endVisit(*this);
@@ -788,6 +801,7 @@ void BinaryOperation::accept(ASTVisitor& _visitor)
 
 void BinaryOperation::accept(ASTConstVisitor& _visitor) const
 {
+	std::cout << "enter accpet-BinaryOperation" << std::endl;
 	if (_visitor.visit(*this))
 	{
 		m_left->accept(_visitor);
@@ -808,6 +822,7 @@ void FunctionCall::accept(ASTVisitor& _visitor)
 
 void FunctionCall::accept(ASTConstVisitor& _visitor) const
 {
+	std::cout << "enter accept-FunctionCall" << std::endl;
 	if (_visitor.visit(*this))
 	{
 		m_expression->accept(_visitor);
@@ -920,6 +935,7 @@ void Identifier::accept(ASTVisitor& _visitor)
 
 void Identifier::accept(ASTConstVisitor& _visitor) const
 {
+	std::cout << "enter accept-Identifier" << std::endl;
 	_visitor.visit(*this);
 	_visitor.endVisit(*this);
 }

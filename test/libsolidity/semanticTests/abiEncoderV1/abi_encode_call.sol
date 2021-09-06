@@ -14,9 +14,10 @@ contract C {
         uint256[] memory b = new uint256[](2);
         b[0] = 6;
         b[1] = 7;
-        (bool success, ) = address(this).call(
-            abi.encodeWithSignature("c(uint256,uint256[])", a, b)
-        );
+        //(bool success, ) = address(this).call(
+        //    abi.encodeWithSignature("c(uint256,uint256[])", a, b)
+        //);
+        (bool success, ) = address(this).call(c(a, b));
         require(success);
         return x;
     }

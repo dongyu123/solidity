@@ -99,6 +99,27 @@ public:
 			expr(expr), exprStr(exprStr), exprSol(exprSol), conditions(conditions) {}
 	};
 
+
+	// modify here
+	boogie::Expr::Ref m_lhs;
+	boogie::Expr::Ref m_rhs;
+	FunctionType const* type_lhs;
+	FunctionType const* type_rhs;
+	int isFuncA = 0;
+
+	// modify here
+	struct Assign {
+		std::list<boogie::Stmt::Ref> assignStmts;	// modify here
+		boogie::Expr::Ref lhs;
+		boogie::Expr::Ref rhs;
+		Assign() {}
+		Assign(std::list<boogie::Stmt::Ref> assignStmts, boogie::Expr::Ref lhs,
+			   boogie::Expr::Ref rhs) :
+			assignStmts(assignStmts), lhs(lhs), rhs(rhs) {}
+	};
+	Assign m_assign;
+
+
 	/**
 	 * Global context with magic variables for verification-specific functions such as sum. We
 	 * use this in the name resolver, so all other stuff is already in the scope of the resolver.
@@ -331,6 +352,7 @@ public:
 
 	void addGlobalComment(std::string str);
 	void addDecl(boogie::Decl::Ref decl);
+	std::vector<boogie::Decl::Ref> getDecls();	// modify here
 
 	// Types
 

@@ -153,6 +153,7 @@ Not: '!';
 BitNot: '~';
 Inc: '++';
 Dec: '--';
+PreFunction: '==>';
 
 /**
  * A single quoted string literal restricted to printable characters.

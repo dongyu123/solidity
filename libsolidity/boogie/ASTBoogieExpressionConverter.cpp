@@ -1,6 +1,7 @@
 #include <boost/algorithm/string/predicate.hpp>
 #include <libsolidity/boogie/AssignHelper.h>
 #include <libsolidity/boogie/ASTBoogieExpressionConverter.h>
+#include <libsolidity/boogie/ASTBoogieConverter.h>
 #include <libsolidity/boogie/ASTBoogieUtils.h>
 #include <libsolidity/boogie/BoogieAst.h>
 #include <libsolidity/boogie/StoragePtrHelper.h>
@@ -186,8 +187,27 @@ bool ASTBoogieExpressionConverter::visit(Assignment const& _node)
 	m_newDecls.insert(m_newDecls.end(), res.newDecls.begin(), res.newDecls.end());
 	for (auto const& c: res.ocs)
 		m_conditions.addCondition(ExprConditionStore::ConditionType::OVERFLOW_CONDITION, c);
+
 	for (auto stmt: res.newStmts)
+	{
 		addSideEffect(stmt);
+		// modify here
+		//auto it = BoogieContext::assign(stmt, lhsExpr, rhsExpr);
+		if(m_context.isFuncA == 1) {
+			// 如果左边的变量是状态变量，就加到assignStmts中
+			auto left = dynamic_cast<Identifier const*>(&_node.leftHandSide());
+			auto leftdecl = left->annotation().referencedDeclaration;
+			auto varDecl = dynamic_cast<VariableDeclaration const*>(leftdecl);
+			if(varDecl->isStateVariable()) {
+				m_context.m_assign.assignStmts.push_back(stmt);
+				m_context.m_assign.lhs = lhsExpr;
+				m_context.m_assign.rhs = rhsExpr;
+				//m_context.m_assignStmts.push_back(stmt);
+				stmt->print(cout);
+				cout << endl;
+			}
+		}
+	}
 
 	// Result will be the LHS (for chained assignments like x = y = 5)
 	m_currentExpr = lhsExpr;
@@ -353,6 +373,7 @@ bool ASTBoogieExpressionConverter::visit(UnaryOperation const& _node)
 	return false;
 }
 
+
 bool ASTBoogieExpressionConverter::visit(BinaryOperation const& _node)
 {
 	// Check if constant propagation could infer the result
@@ -368,12 +389,29 @@ bool ASTBoogieExpressionConverter::visit(BinaryOperation const& _node)
 	}
 
 	// Get rhs recursively
+	// modify here
 	_node.rightExpression().accept(*this);
 	bg::Expr::Ref rhs = m_currentExpr;
+	if(_node.getOperator() == Token::PreFunction) {
+		// 获取到funcType
+		auto type_right = _node.rightExpression().annotation().type;
+		m_context.type_rhs = dynamic_cast<FunctionType const*>(type_right);
+		for(auto it: m_context.type_rhs->parameterNames())
+			cout << "right paraname: " << it << endl;
+		cout << "right type " << type_right->toString() << endl;
+		// 这个rhs是varExpr类型的
 
+	}
 	// Get lhs recursively
 	_node.leftExpression().accept(*this);
 	bg::Expr::Ref lhs = m_currentExpr;
+	// modify here
+	if(_node.getOperator() == Token::PreFunction) {
+		auto type_left = _node.leftExpression().annotation().type;
+		m_context.type_lhs = dynamic_cast<FunctionType const*>(type_left);
+		for(auto it: m_context.type_lhs->parameterNames())
+			cout << "left paraname: " << it << endl;
+	}
 
 	// Common type might not be equal to the type of the node, e.g., in case of uint32 == uint64,
 	// the common type is uint64, but the type of the node is bool
@@ -394,6 +432,12 @@ bool ASTBoogieExpressionConverter::visit(BinaryOperation const& _node)
 	case Token::Or: m_currentExpr = bg::Expr::or_(lhs, rhs); break;
 	case Token::Equal: m_currentExpr = bg::Expr::eq(lhs, rhs); break;
 	case Token::NotEqual: m_currentExpr = bg::Expr::neq(lhs, rhs); break;
+	case Token::PreFunction: { // modify here
+		m_currentExpr = bg::Expr::prefunc(lhs, rhs);
+		m_context.m_lhs = lhs;
+		m_context.m_rhs = rhs;
+		break;
+	}
 
 	// Arithmetic operations
 	case Token::Add:
@@ -758,6 +802,7 @@ bool ASTBoogieExpressionConverter::visit(FunctionCall const& _node)
 	// External calls require the invariants to hold
 	if (funcName == ASTBoogieUtils::CALL.boogie)
 	{
+		cout << funcName << endl;
 		for (auto invar: m_context.currentContractInvars())
 		{
 			for (auto tcc: invar.conditions.getConditions(ExprConditionStore::ConditionType::TYPE_CHECKING_CONDITION))
@@ -809,6 +854,16 @@ bool ASTBoogieExpressionConverter::visit(FunctionCall const& _node)
 		bg::Stmt::annot(ASTBoogieUtils::createAttrs(_node.location(), "", *m_context.currentScanner())),
 		bg::Stmt::call(funcName, allArgs, returnVarNames)
 	});
+	// modify here
+	/*if(m_context.m_lhs != nullptr) {
+		auto lhsName = m_context.m_lhs->toBgString();
+		if(lhsName == funcName) {
+			for(auto stmt: m_context.m_assignStmts) {
+				stmt->print(cout);
+				addSideEffect(stmt);
+			}
+		}
+	}*/
 
 	// Result is the none, single variable, or a tuple of variables
 	if (returnVars.size() == 0)

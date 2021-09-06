@@ -536,9 +536,13 @@ void Scanner::scanToken()
 			break;
 		case '=':
 			// = == =>
+			// modify：==>
 			advance();
-			if (m_char == '=')
-				token = selectToken(Token::Equal);
+			if (m_char == '=') {
+				advance();
+				if(m_char == '>') token = selectToken(Token::PreFunction);
+				else token = selectToken(Token::Equal);
+			}
 			else if (m_char == '>')
 				token = selectToken(Token::DoubleArrow);
 			else

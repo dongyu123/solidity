@@ -131,7 +131,7 @@ namespace solidity::langutil
 	T(GreaterThan, ">", 7)                                             \
 	T(LessThanOrEqual, "<=", 7)                                        \
 	T(GreaterThanOrEqual, ">=", 7)                                     \
-	\
+	T(PreFunction, "==>", 7)                                           \
 	/* Unary operators. */                                             \
 	/* IsUnaryOp() relies on this block of enum values */              \
 	/* being contiguous and sorted in the same order! */               \
@@ -300,7 +300,7 @@ namespace TokenTraits
 	constexpr bool isCommutativeOp(Token op) { return op == Token::BitOr || op == Token::BitXor || op == Token::BitAnd ||
 		op == Token::Add || op == Token::Mul || op == Token::Equal || op == Token::NotEqual; }
 	constexpr bool isArithmeticOp(Token op) { return Token::Add <= op && op <= Token::Exp; }
-	constexpr bool isCompareOp(Token op) { return Token::Equal <= op && op <= Token::GreaterThanOrEqual; }
+	constexpr bool isCompareOp(Token op) { return (Token::Equal <= op && op <= Token::GreaterThanOrEqual) || op == Token::PreFunction; }
 
 	constexpr bool isBitOp(Token op) { return (Token::BitOr <= op && op <= Token::BitAnd) || op == Token::BitNot; }
 	constexpr bool isBooleanOp(Token op) { return (Token::Or <= op && op <= Token::And) || op == Token::Not; }

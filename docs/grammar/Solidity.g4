@@ -341,6 +341,7 @@ expression:
 	| expression BitXor expression # BitXorOperation
 	| expression BitOr expression # BitOrOperation
 	| expression (LessThan | GreaterThan | LessThanOrEqual | GreaterThanOrEqual) expression # OrderComparison
+	| expression PrepFunction expression # function pre-post
 	| expression (Equal | NotEqual) expression # EqualityComparison
 	| expression And expression # AndOperation
 	| expression Or expression # OrOperation

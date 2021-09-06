@@ -226,6 +226,7 @@ public:
 	static bool classof(Decl::ConstRef D) { return D->getKind() == COMMENT; }
 };
 
+
 std::ostream& operator<<(std::ostream& os, Decl& e);
 std::ostream& operator<<(std::ostream& os, Decl::Ref e);
 std::ostream& operator<<(std::ostream& os, Decl::ConstRef e);

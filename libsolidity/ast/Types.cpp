@@ -306,6 +306,7 @@ string Type::identifier() const
 
 TypePointer Type::commonType(Type const* _a, Type const* _b)
 {
+	cout << "enter function commonType" << endl;
 	if (!_a || !_b)
 		return nullptr;
 	else if (_a->mobileType() && _b->isImplicitlyConvertibleTo(*_a->mobileType()))
@@ -3149,7 +3150,9 @@ TypeResult FunctionType::unaryOperatorResult(Token _operator) const
 
 TypeResult FunctionType::binaryOperatorResult(Token _operator, Type const* _other) const
 {
-	if (_other->category() != category() || !(_operator == Token::Equal || _operator == Token::NotEqual))
+	cout << "enter function binaryOperatorResult" << endl;
+	// modify here
+	if (_other->category() != category() || !(_operator == Token::Equal || _operator == Token::NotEqual || _operator == Token::PreFunction))
 		return nullptr;
 	FunctionType const& other = dynamic_cast<FunctionType const&>(*_other);
 	if (kind() == Kind::Internal && other.kind() == Kind::Internal && sizeOnStack() == 1 && other.sizeOnStack() == 1)

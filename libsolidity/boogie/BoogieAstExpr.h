@@ -72,6 +72,7 @@ public:
 		GT,
 		LTE,
 		GTE,
+		PreFunction,
 		PLUS,
 		MINUS,
 		SUB,
@@ -133,6 +134,7 @@ public:
 	static Ref gt(Ref lhs, Ref rhs);
 	static Ref lte(Ref lhs, Ref rhs);
 	static Ref gte(Ref lhs, Ref rhs);
+	static Ref prefunc(Ref lhs, Ref rhs);	// modify here
 	static Ref plus(Ref lhs, Ref rhs);
 	static Ref minus(Ref lhs, Ref rhs);
 	static Ref div(Ref lhs, Ref rhs);
@@ -190,10 +192,11 @@ public:
 class BinExpr : public Expr
 {
 public:
+	// modify here
 	enum BinaryOperator
 	{
 		Iff, Imp, Or, And, Eq, Neq, Lt, Gt, Lte, Gte, Sub,
-		Conc, Plus, Minus, Times, Div, IntDiv, Mod, Exp
+		Conc, Plus, Minus, Times, Div, IntDiv, Mod, Exp, Pref
 	};
 private:
 	BinaryOperator const op;
@@ -235,6 +238,7 @@ public:
 	Ref substitute(Subst const& s) const override;
 	bool contains(std::string id) const override;
 	int cmp(FunExpr const& e) const;
+	std::string getFunName() const { return fun; }
 };
 
 class BoolLit : public Expr {

@@ -28,6 +28,16 @@ namespace solidity
 namespace frontend
 {
 
+namespace
+{
+std::ostream& sout()
+{
+	return cout;
+}
+
+}
+#define cout
+
 bg::Expr::Ref ASTBoogieConverter::convertExpression(Expression const& _node)
 {
 	ASTBoogieExpressionConverter::Result result = ASTBoogieExpressionConverter(m_context).convert(_node, false);
@@ -45,6 +55,127 @@ bg::Expr::Ref ASTBoogieConverter::convertExpression(Expression const& _node)
 	return result.expr;
 }
 
+// modify here
+/*void ASTBoogieConverter::convert2BgExpr(bg::Expr::Ref lhs, bg::Expr::Ref rhs) {
+	pre_lhs = lhs;
+	pre_rhs = rhs;
+	sout() << "left is " << pre_lhs << endl;
+}*/
+// modify here
+void ASTBoogieConverter::createPrefuncProc(ContractDefinition const& _node) {
+	m_context.addGlobalComment("\nPrefunction procedure");
+	vector<bg::Block::Ref> blocks1;
+	vector<bg::Block::Ref> blocks2;
+	// procedure的name和parameter
+	// todo: procedure的名字要进行映射，可参考constructor
+	string procedureName1 = "PreFunc1";
+	string procedureName2 = "PreFunc2";
+	std::vector<bg::Binding> params {
+		{m_context.boogieThis()->getRefTo(), m_context.boogieThis()->getType() }, // this
+		{m_context.boogieMsgSender()->getRefTo(), m_context.boogieMsgSender()->getType() }, // msg.sender
+		{m_context.boogieMsgValue()->getRefTo(), m_context.boogieMsgValue()->getType() } // msg.value
+	};
+	// 处理左边函数的参数，放到procedure的参数中
+	vector<bg::Expr::Ref> lhsArgs {
+		m_context.boogieThis()->getRefTo(), // this
+		m_context.boogieMsgSender()->getRefTo(), // msg.sender
+		m_context.boogieMsgValue()->getRefTo() // msg.value
+	};
+	for (unsigned i = 0; i < m_context.type_lhs->parameterTypes().size(); ++i)
+	{
+		//sout() << m_context.type_lhs->parameterNames()[i] << endl;
+		auto argDecl = m_context.freshTempVar(m_context.toBoogieType(m_context.type_lhs->parameterTypes()[i], nullptr),
+											  m_context.type_lhs->parameterNames()[i]);
+		auto temp = argDecl->getRefTo();
+		auto type = argDecl->getType();
+		params.push_back({temp, type});
+		lhsArgs.push_back(temp);
+	}
+	// todo：处理左边函数的returnval
+	std::vector<std::string> lhsreturnVarNames;
+	std::vector<bg::Expr::Ref> lhsreturnVars;
+	for (unsigned i = 0; i < m_context.type_lhs->returnParameterTypes().size(); ++i)
+	{
+		//sout() << m_context.type_lhs->returnParameterNames()[i] << endl;
+		auto argDecl = m_context.freshTempVar(m_context.toBoogieType(m_context.type_lhs->returnParameterTypes()[i], nullptr),
+											  m_context.m_lhs->toBgString() + "_ret");
+		m_newDecls.push_back(argDecl);
+		lhsreturnVarNames.push_back(argDecl->getName());
+		lhsreturnVars.push_back(argDecl->getRefTo());
+	}
+
+	// todo：处理右边函数的参数和返回值
+	vector<bg::Expr::Ref> rhsArgs {
+		m_context.boogieThis()->getRefTo(), // this
+		m_context.boogieMsgSender()->getRefTo(), // msg.sender
+		m_context.boogieMsgValue()->getRefTo() // msg.value
+	};
+	for (unsigned i = 0; i < m_context.type_rhs->parameterTypes().size(); ++i)
+	{
+		//sout() << m_context.type_rhs->parameterNames()[i] << endl;
+		auto argDecl = m_context.freshTempVar(m_context.toBoogieType(m_context.type_rhs->parameterTypes()[i], nullptr),
+											  m_context.type_rhs->parameterNames()[i]);
+		auto temp = argDecl->getRefTo();
+		auto type = argDecl->getType();
+		params.push_back({temp, type});
+		rhsArgs.push_back(temp);
+	}
+
+	std::vector<std::string> rhsreturnVarNames;
+	std::vector<bg::Expr::Ref> rhsreturnVars;
+	for (unsigned i = 0; i < m_context.type_rhs->returnParameterTypes().size(); ++i)
+	{
+		//sout() << m_context.type_rhs->returnParameterNames()[i] << endl;
+		auto argDecl = m_context.freshTempVar(m_context.toBoogieType(m_context.type_rhs->returnParameterTypes()[i], nullptr),
+											  m_context.m_rhs->toBgString() + "_ret");
+		m_newDecls.push_back(argDecl);
+		rhsreturnVarNames.push_back(argDecl->getName());
+		rhsreturnVars.push_back(argDecl->getRefTo());
+	}
+	m_currentBlocks.push(bg::Block::block());
+	m_currentBlocks.top()->addStmt(bg::Stmt::call(m_context.m_lhs->toBgString(), lhsArgs, lhsreturnVarNames));
+	// A中的赋值语句
+	for(auto stmt: m_context.m_assign.assignStmts) {
+		//stmt->print(sout());
+		//m_currentBlocks.top()->addStmt(stmt);
+	}
+	m_currentBlocks.top()->addStmt(bg::Stmt::call(m_context.m_rhs->toBgString(), rhsArgs, rhsreturnVarNames));
+	blocks1.push_back(m_currentBlocks.top());
+	m_currentBlocks.pop();
+	m_localDecls.insert(m_localDecls.end(), m_newDecls.begin(), m_newDecls.end());
+	m_newDecls.clear();
+	auto procDecl1 = bg::Decl::procedure(procedureName1, params, {}, m_localDecls, blocks1);
+	// todo：处理spec
+	/*for(auto it: m_context.getDecls()) {
+		if(it->getName() == m_context.m_lhs->toBgString()) {
+			auto decl = dynamic_pointer_cast<bg::ProcDecl>(it);	// 必须在这里做转换，因为不是所有的it的原始类型都是ProcDecl
+			if(decl == nullptr) sout() << "nullptr" << endl;
+			for(auto req: decl->getRequires()) {
+				procDecl->getRequires().push_back(req);
+			}
+			for(auto ensure: decl->getEnsures()) {
+				procDecl->getEnsures().push_back(ensure);
+			}
+		} else if(it->getName() == m_context.m_rhs->toBgString()) {
+			auto decl = dynamic_pointer_cast<bg::ProcDecl>(it);
+			for(auto req: decl->getRequires()) {
+				procDecl->getRequires().push_back(req);
+			}
+			for(auto ensure: decl->getEnsures()) {
+				procDecl->getEnsures().push_back(ensure);
+			}
+		}
+	}*/
+	m_currentBlocks.push(bg::Block::block());
+	m_currentBlocks.top()->addStmt(bg::Stmt::call(m_context.m_rhs->toBgString(), rhsArgs, rhsreturnVarNames));
+	blocks1.push_back(m_currentBlocks.top());
+	m_currentBlocks.pop();
+	//auto procDecl2 = bg::Decl::procedure(procedureName2, params, {}, m_localDecls, blocks2);
+	procDecl1->addAttrs(ASTBoogieUtils::createAttrs(_node.location(), _node.name() + "::[preFunction1]", *m_context.currentScanner()));
+	m_context.addDecl(procDecl1);
+	//procDecl2->addAttrs(ASTBoogieUtils::createAttrs(_node.location(), _node.name() + "::[preFunction2]", *m_context.currentScanner()));
+	//m_context.addDecl(procDecl2);
+}
 void ASTBoogieConverter::createImplicitConstructor(ContractDefinition const& _node)
 {
 	m_context.addGlobalComment("\nDefault constructor");
@@ -88,6 +219,7 @@ void ASTBoogieConverter::createImplicitConstructor(ContractDefinition const& _no
 	auto procDecl = bg::Decl::procedure(funcName, params, {}, m_localDecls, blocks);
 	for (auto invar: m_context.currentContractInvars())
 	{
+		if(invar.exprStr.find("==>")) continue; // modify here
 		auto attrs = ASTBoogieUtils::createAttrs(_node.location(), "State variable initializers might violate invariant '" + invar.exprStr + "'.", *m_context.currentScanner());
 		procDecl->getEnsures().push_back(bg::Specification::spec(invar.expr, attrs));
 	}
@@ -248,6 +380,7 @@ void ASTBoogieConverter::createEtherReceiveFunc(ContractDefinition const& _node)
 	bg::ProcDeclRef balIncrProc = bg::Decl::procedure(_node.name() + "_eth_receive", balIncrParams, {}, {}, {balIncrBlock});
 	for (auto invar: m_context.currentContractInvars())
 	{
+		if(invar.exprStr.find("==>")) continue; // modify here
 		for (auto oc: invar.conditions.getConditions(ExprConditionStore::ConditionType::OVERFLOW_CONDITION))
 		{
 			balIncrProc->getRequires().push_back(bg::Specification::spec(oc,
@@ -361,8 +494,10 @@ void ASTBoogieConverter::processSpecificationExpression(ASTPointer<Expression> e
 
 	// Do type checking
 	TypeChecker typeChecker(m_context.evmVersion(), *m_context.errorReporter());
-	if (!typeChecker.checkTypeRequirements(*m_context.currentSource(), *m_context.currentContract(), *expr))
+	if (!typeChecker.checkTypeRequirements(*m_context.currentSource(), *m_context.currentContract(), *expr)) {
+		sout() << "error happens here: checkTypeRequirements" << endl;
 		return;
+	}
 
 	// Convert all the quantified variables
 	if (specInfo.quantifierList.size() > 0)
@@ -385,6 +520,7 @@ void ASTBoogieConverter::processSpecificationExpression(ASTPointer<Expression> e
 	}
 
 	// Convert expression to Boogie representation
+	sout() << "function processSpec: enter convert" << endl;
 	auto convResult = ASTBoogieExpressionConverter(m_context).convert(*expr, true);
 	// Add index bounds if array is there
 	if (specInfo.arrayId)
@@ -431,9 +567,9 @@ void ASTBoogieConverter::processSpecificationExpression(ASTPointer<Expression> e
 			convResult.conditions.removeConditions(ExprConditionStore::ConditionType::OVERFLOW_CONDITION);
 			m_context.reportWarning(&_node, "Annotation generates overflow checking conditions but they are not supported within quantifiers.");
 		}
-		for (auto expr: bindings)
+		for (auto exp: bindings)
 		{
-			auto varExpr = std::dynamic_pointer_cast<boogie::VarExpr const>(expr.id);
+			auto varExpr = std::dynamic_pointer_cast<boogie::VarExpr const>(exp.id);
 			auto conditions = convResult.conditions.getConditionsContaining(ExprConditionStore::ConditionType::TYPE_CHECKING_CONDITION, varExpr->getName());
 			bindingConditions.insert(bindingConditions.end(), conditions.begin(), conditions.end());
 			auto tccs = convResult.conditions.getConditionsOn(ExprConditionStore::ConditionType::TYPE_CHECKING_CONDITION, varExpr->getName());
@@ -493,6 +629,7 @@ bool ASTBoogieConverter::parseExpr(string exprStr, ASTNode const& _node, ASTNode
 	try
 	{
 		// solidity side quantifier info
+		// exprStr: A -> B
 		Parser::SpecificationExpressionInfo specInfo;
 
 		// Parse
@@ -500,11 +637,14 @@ bool ASTBoogieConverter::parseExpr(string exprStr, ASTNode const& _node, ASTNode
 		Parser parser(*m_context.errorReporter(), m_context.evmVersion());
 		auto scanner = std::make_shared<Scanner>(exprStream);
 		ASTPointer<Expression> expr = parser.parseSpecificationExpression(scanner, specInfo);
-		if (!expr)
+		sout() << "function parseSpecificationExpression done" << endl;
+		if (!expr) {
+			sout() << "error happens here: fatalError" << endl;
 			throw langutil::FatalError();
-
+		}
 		// Process the expression (add quantifiers and stuff)
 		processSpecificationExpression(expr, specInfo, _node, _scope, result);
+		sout() << "processSpecificationExpression done" << endl;
 		result.exprStr = exprStr;
 		result.exprSol = expr;
 	}
@@ -522,6 +662,7 @@ bool ASTBoogieConverter::parseExpr(string exprStr, ASTNode const& _node, ASTNode
 	if (!Error::containsOnlyWarnings(errorList))
 	{
 		m_context.reportError(&_node, "Error(s) while translating annotation for node");
+		sout() << "error happens here: parseExpr" << endl;
 		return false;
 	}
 	else if (errorList.size() > 0)
@@ -631,6 +772,7 @@ bool ASTBoogieConverter::parseSpecificationCasesExpr(string exprStr, ASTNode con
 std::vector<BoogieContext::DocTagExpr> ASTBoogieConverter::getExprsFromDocTags(ASTNode const& _node, StructurallyDocumentedAnnotation const& _annot,
 		ASTNode const* _scope, vector<string> const& _tags)
 {
+	sout() << "enter function: getExprsFromDocTags" << endl;
 	std::vector<BoogieContext::DocTagExpr> exprs;
 	for (auto tag: _tags)
 	{
@@ -652,6 +794,7 @@ std::vector<BoogieContext::DocTagExpr> ASTBoogieConverter::getExprsFromDocTags(A
 			}
 		}
 	}
+	sout() << "quit function: getExprsFromDocTags" << endl;
 	return exprs;
 }
 
@@ -988,6 +1131,7 @@ bool ASTBoogieConverter::visit(ContractDefinition const& _node)
 	for (auto invar: getExprsFromDocTags(_node, _node.annotation(), &_node, { ASTBoogieUtils::DOCTAG_CONTRACT_INVAR }))
 	{
 		m_context.addGlobalComment("Contract invariant: " + invar.exprStr);
+		sout() << "Contract invariant: " << invar.exprStr << endl;
 		m_context.currentContractInvars().push_back(invar);
 	}
 
@@ -1019,12 +1163,22 @@ bool ASTBoogieConverter::visit(ContractDefinition const& _node)
 	// Create Ether receiving function (selfdestruct)
 	if (!m_context.currentContractInvars().empty())
 		createEtherReceiveFunc(_node);
+	// modify here
+	if(m_context.m_lhs != nullptr) createPrefuncProc(_node); // modify here
+
+	// modify here - contract
+	BoogieContext *p = &m_context;
+	contexts.push_back(p);
+	sout() << contexts.size() << endl;
+
+
 
 	// Rest current contract (removes this, super)
 	m_context.setCurrentContract(nullptr);
 
 	return false;
 }
+
 
 bool ASTBoogieConverter::visit(InheritanceSpecifier const& _node)
 {
@@ -1118,6 +1272,15 @@ bool ASTBoogieConverter::visit(FunctionDefinition const& _node)
 
 	// Solidity functions are mapped to Boogie procedures
 	m_currentFunc = &_node;
+	// modify here
+	m_context.isFuncA = 0;
+	if(m_context.m_lhs != nullptr) {
+		// sout() << m_currentFunc->name() << endl; // A
+		// sout() << m_context.m_lhs->toBgString() << endl; // A#id
+		if(m_context.m_lhs->toBgString().find(m_currentFunc->name()) != string::npos) {
+			m_context.isFuncA = 1;
+		}
+	}
 
 	// Type to pass around
 	TypePointer tp_uint256 = TypeProvider::integer(256, IntegerType::Modifier::Unsigned);
@@ -1277,6 +1440,9 @@ bool ASTBoogieConverter::visit(FunctionDefinition const& _node)
 			}
 			if (!_node.isConstructor())
 			{
+				if(invar.exprStr.find("==>")) { // modify here
+					continue;
+				}
 				procDecl->getRequires().push_back(bg::Specification::spec(invar.expr,
 					ASTBoogieUtils::createAttrs(_node.location(), "Invariant '" + invar.exprStr + "' might not hold when entering function.", *m_context.currentScanner())));
 			}
@@ -1305,6 +1471,7 @@ bool ASTBoogieConverter::visit(FunctionDefinition const& _node)
 	{
 		procDecl->getEnsures().push_back(bg::Specification::spec(post.expr,
 							ASTBoogieUtils::createAttrs(_node.location(), "Postcondition '" + post.exprStr + "' might not hold at end of function.", *m_context.currentScanner())));
+
 		for (auto tcc: post.conditions.getConditions(ExprConditionStore::ConditionType::TYPE_CHECKING_CONDITION))
 		{
 			// TCC might contain return variable, cannot be added as precondition
@@ -1316,6 +1483,19 @@ bool ASTBoogieConverter::visit(FunctionDefinition const& _node)
 			procDecl->getEnsures().push_back(bg::Specification::spec(oc,
 							ASTBoogieUtils::createAttrs(_node.location(), "Overflow in computation of postcondition '" + post.exprStr + "' at end of function.", *m_context.currentScanner())));
 	}
+	// modify here
+	// todo: 处理A函数的postcondition
+	// 就是把A中的赋值语句加到postcondition中，先去找A的赋值，然后把string加到postcondition中
+	if(m_context.isFuncA) {
+		for(auto stmt: m_context.m_assign.assignStmts) {
+			stmt->print(sout());
+			//m_currentBlocks.top()->addStmt(stmt);
+			auto postexp = bg::Expr::eq(m_context.m_assign.lhs, m_context.m_assign.rhs);
+			procDecl->getEnsures().push_back(bg::Specification::spec(postexp,
+																	 ASTBoogieUtils::createAttrs(_node.location(), "Postcondition '" + postexp->toBgString() + "' might not hold at end of function.", *m_context.currentScanner())));
+		}
+	}
+
 	// TODO: check that no new sum variables were introduced
 
 	// Add all specs for events that have been declared

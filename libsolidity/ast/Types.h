@@ -210,6 +210,7 @@ public:
 	/// The default implementation allows comparison operators if a common type exists
 	virtual TypeResult binaryOperatorResult(Token _operator, Type const* _other) const
 	{
+		std::cout << "enter function binaryOperatorResult" << std::endl;
 		return TokenTraits::isCompareOp(_operator) ? commonType(this, _other) : nullptr;
 	}
 
