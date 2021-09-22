@@ -36,28 +36,6 @@ contract C {
     }
 }
 
-/// @notice invariant funcA ==> funcB
-contract C {
-    int x;
 
-    /// @notice postcondition x == 1
-    function funcA() public {
-        x = 1;
-    }
-
-    /// @notice precondition x == 1
-    function funcB() public {
-
-    }
-
-    function procedure1() public {
-        funcA();
-        funcB();
-    }
-
-    function procedure2() public {
-        funcB();
-    }
-}
 
 

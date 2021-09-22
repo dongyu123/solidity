@@ -44,8 +44,8 @@ void ASTBoogieExpressionConverter::addSideEffect(bg::Stmt::Ref stmt)
 	m_newStatements.push_back(stmt);
 }
 
-ASTBoogieExpressionConverter::ASTBoogieExpressionConverter(BoogieContext& context) :
-		m_context(context),
+ASTBoogieExpressionConverter::ASTBoogieExpressionConverter(BoogieContext& context, vector<BoogieContext>& contexts) :	// modify here - contract
+		m_context(context), m_contexts(contexts),
 		m_insideSpec(false),
 		m_currentExpr(nullptr),
 		m_currentAddress(nullptr),
@@ -388,6 +388,19 @@ bool ASTBoogieExpressionConverter::visit(BinaryOperation const& _node)
 		return false;
 	}
 
+
+	// Get lhs recursively
+	_node.leftExpression().accept(*this);
+	bg::Expr::Ref lhs = m_currentExpr;
+	// modify here
+	if(_node.getOperator() == Token::PreFunction) {
+		auto type_left = _node.leftExpression().annotation().type;
+		m_context.type_lhs = dynamic_cast<FunctionType const*>(type_left);
+		for(auto it: m_context.type_lhs->parameterNames())
+			cout << "left paraname: " << it << endl;
+	}
+
+	// modify here - contract: 把binaryOperation的左右两边调换了顺序
 	// Get rhs recursively
 	// modify here
 	_node.rightExpression().accept(*this);
@@ -401,16 +414,6 @@ bool ASTBoogieExpressionConverter::visit(BinaryOperation const& _node)
 		cout << "right type " << type_right->toString() << endl;
 		// 这个rhs是varExpr类型的
 
-	}
-	// Get lhs recursively
-	_node.leftExpression().accept(*this);
-	bg::Expr::Ref lhs = m_currentExpr;
-	// modify here
-	if(_node.getOperator() == Token::PreFunction) {
-		auto type_left = _node.leftExpression().annotation().type;
-		m_context.type_lhs = dynamic_cast<FunctionType const*>(type_left);
-		for(auto it: m_context.type_lhs->parameterNames())
-			cout << "left paraname: " << it << endl;
 	}
 
 	// Common type might not be equal to the type of the node, e.g., in case of uint32 == uint64,
@@ -477,6 +480,7 @@ bool ASTBoogieExpressionConverter::visit(BinaryOperation const& _node)
 
 bool ASTBoogieExpressionConverter::visit(FunctionCall const& _node)
 {
+	cout << "enter visit-FunctionCall" << endl;
 	// Check for conversions
 	if (*_node.annotation().kind == FunctionCallKind::TypeConversion)
 	{
@@ -532,6 +536,7 @@ bool ASTBoogieExpressionConverter::visit(FunctionCall const& _node)
 	string funcName = "";
 	if (auto varExpr = dynamic_pointer_cast<bg::VarExpr const>(expr))
 		funcName = varExpr->getName();
+
 
 	// Process arguments recursively
 	vector<bg::Expr::Ref> allArgs;
@@ -802,7 +807,6 @@ bool ASTBoogieExpressionConverter::visit(FunctionCall const& _node)
 	// External calls require the invariants to hold
 	if (funcName == ASTBoogieUtils::CALL.boogie)
 	{
-		cout << funcName << endl;
 		for (auto invar: m_context.currentContractInvars())
 		{
 			for (auto tcc: invar.conditions.getConditions(ExprConditionStore::ConditionType::TYPE_CHECKING_CONDITION))
@@ -864,6 +868,30 @@ bool ASTBoogieExpressionConverter::visit(FunctionCall const& _node)
 			}
 		}
 	}*/
+	// modify here - contract
+	cout << "isContractAccess: " << m_context.isContractAcc << endl;
+	if(m_context.isContractAcc) {
+		for(auto arg: regularArgs) {
+			cout << "arg: " << arg->toBgString() << endl;	// amount#20
+		}
+		//todo: 这里的m_contexts需要处理
+		for(auto del: m_contexts[0].getDecls()) {
+			if(auto procDecl = dynamic_cast<bg::ProcDecl const*>(del.get()); procDecl) {
+				if(funcName == procDecl->getName()) {
+					auto it = dynamic_pointer_cast<bg::ProcDecl>(del);
+					for(auto para: it->getParameters()) {
+						cout << para.id << endl;	// amount#4
+					}
+					for(auto docExpr: m_context.docExprs) {
+						it->getEnsures().push_back(bg::Specification::spec(docExpr.expr,
+																				 ASTBoogieUtils::createAttrs(_node.location(), "Postcondition '" + docExpr.exprStr + "' might not hold at end of function.", *m_contexts[0].currentScanner())));
+					}
+
+				}
+			}
+		}
+	}
+
 
 	// Result is the none, single variable, or a tuple of variables
 	if (returnVars.size() == 0)
@@ -1273,6 +1301,8 @@ bool ASTBoogieExpressionConverter::visit(NewExpression const& _node)
 
 bool ASTBoogieExpressionConverter::visit(MemberAccess const& _node)
 {
+	cout << "enter visit-MemberAccess" << endl;
+
 	// Inline constants
 	if (auto varDecl = dynamic_cast<VariableDeclaration const*>(_node.annotation().referencedDeclaration))
 	{
@@ -1281,6 +1311,7 @@ bool ASTBoogieExpressionConverter::visit(MemberAccess const& _node)
 			varDecl->value()->accept(*this);
 			return false;
 		}
+
 	}
 
 	// Normally, the expression of the MemberAccess will give the address and
@@ -1289,6 +1320,10 @@ bool ASTBoogieExpressionConverter::visit(MemberAccess const& _node)
 
 	// Get expression recursively
 	_node.expression().accept(*this);
+	cout << "what: " << m_currentExpr->toBgString() << endl;
+	cout << _node.memberName() << endl;
+	cout << _node.annotation().type->toString() << endl;
+
 	bg::Expr::Ref expr = m_currentExpr;
 	if (m_currentExpr->isError())
 		return false;
@@ -1315,6 +1350,9 @@ bool ASTBoogieExpressionConverter::visit(MemberAccess const& _node)
 	// Type of the expression
 	TypePointer type = _node.expression().annotation().type;
 	Type::Category typeCategory = type->category();
+	cout << type->toString() << endl; //type(Contract C)
+	// modify here - contract
+	bool isContract = (type->toString().find("type(contract") != string::npos) && (typeCategory != Type::Category::Function);
 
 	// Handle special members/functions
 	TypePointer tp_uint256 = TypeProvider::integer(256, IntegerType::Modifier::Unsigned);
@@ -1427,12 +1465,25 @@ bool ASTBoogieExpressionConverter::visit(MemberAccess const& _node)
 		return false;
 	}
 	m_currentExpr = bg::Expr::id(m_context.mapDeclName(*_node.annotation().referencedDeclaration));
+	cout << _node.annotation().referencedDeclaration->name() << endl;
+	cout << _node.annotation().referencedDeclaration->type()->toString() << endl;
+	cout << "here:" << m_currentExpr->toBgString() << endl;
+	cout << "isContract: " << isContract << endl;
+	// modify here - contract
+	if(isContract) {
+		m_context.isAnotherContract = true;
+		m_context.isContractAcc = true;
+	}
+
 	// Check for getter
 	m_isGetter =  dynamic_cast<VariableDeclaration const*>(_node.annotation().referencedDeclaration);
 	m_getterVarType = nullptr;
+
 	if (m_isGetter)
 	{
-		m_currentExpr = bg::Expr::arrsel(m_currentExpr, m_currentAddress);
+		// modify here - contract
+		if(m_context.isAnotherContract) m_currentExpr = bg::Expr::arrsel(m_currentExpr, m_context.boogieThis()->getRefTo());
+		else m_currentExpr = bg::Expr::arrsel(m_currentExpr, m_currentAddress);
 		m_getterVarType = _node.annotation().referencedDeclaration->type();
 	}
 
@@ -1483,6 +1534,8 @@ bool ASTBoogieExpressionConverter::visit(MemberAccess const& _node)
 		return false;
 	}
 
+	cout << m_currentExpr->toBgString() << endl;
+	cout << "quit here" << endl;
 	return false;
 }
 
@@ -1595,6 +1648,7 @@ bool ASTBoogieExpressionConverter::visit(IndexRangeAccess const& _node)
 
 bool ASTBoogieExpressionConverter::visit(Identifier const& _node)
 {
+	cout << "enter visit-Identifier" << endl;
 	if (_node.name() == ASTBoogieUtils::VERIFIER_SUM)
 	{
 		m_currentExpr = bg::Expr::id(ASTBoogieUtils::VERIFIER_SUM);
@@ -1620,17 +1674,27 @@ bool ASTBoogieExpressionConverter::visit(Identifier const& _node)
 		}
 	}
 
-	string declName = m_context.mapDeclName(*(decl));
+	string declName;
+	cout << "isContactAcc:" << m_context.isContractAcc << endl;
+	if(m_context.isContractAcc) {
+		declName = m_contexts[0].mapDeclName(*(decl));
+	} else declName = m_context.mapDeclName(*(decl));
 
 	// State variables must be referenced by accessing the map
 	// Unless it's a declaration within a specification (scope == nullptr)
-	if (varDecl && varDecl->isStateVariable())
-		m_currentExpr = bg::Expr::arrsel(bg::Expr::id(declName), m_context.boogieThis()->getRefTo());
+	if ((varDecl && varDecl->isStateVariable())) {
+		if(m_context.isContractAcc) m_currentExpr = bg::Expr::arrsel(bg::Expr::id(declName), m_contexts[0].boogieThis()->getRefTo());
+		else m_currentExpr = bg::Expr::arrsel(bg::Expr::id(declName), m_context.boogieThis()->getRefTo());
+	}
 	// Other identifiers can be referenced by their name
-	else
-		m_currentExpr = bg::Expr::id(declName);
+	// 如果不是状态变量，说明是函数体内的变量，那么就直接根据name找到即可，是用共享指针
+	else {
+		if(m_context.isContractAcc) m_currentExpr = bg::Expr::id(declName);
+		else m_currentExpr = bg::Expr::id(declName);
+	}
 
 
+	cout << "m_currentExpr: " << m_currentExpr->toBgString() << endl;
 	addTCC(m_currentExpr, decl->type(), declName, false);
 
 	return false;

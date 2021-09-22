@@ -1829,7 +1829,8 @@ void CommandLineInterface::handleBoogie()
 	BoogieContext context(encoding, overflow,
 			m_args.count(g_strAstBoogieModAnalysis) || stats.hasModifiesSpecs(),
 			&errorReporter, m_compiler->getScopes(), m_evmVersion, stats);
-	ASTBoogieConverter boogieConverter(context);
+	vector<BoogieContext> contexts;
+	ASTBoogieConverter boogieConverter(context, contexts);
 	EmitsChecker emitsChecker(context);
 
 	SourceReferenceFormatter formatter(serr(false));

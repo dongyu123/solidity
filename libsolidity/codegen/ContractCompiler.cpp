@@ -1257,6 +1257,8 @@ bool ContractCompiler::visit(VariableDeclarationStatement const& _variableDeclar
 				utils.popStackElement(*valueTypes[j]);
 		}
 	}
+	// modify here - contract
+	cout << "checker check" << endl;
 	checker.check();
 	return false;
 }

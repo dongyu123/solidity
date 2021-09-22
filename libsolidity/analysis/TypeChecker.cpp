@@ -2665,9 +2665,14 @@ void TypeChecker::endVisit(NewExpression const& _newExpression)
 
 bool TypeChecker::visit(MemberAccess const& _memberAccess)
 {
+	cout << "enter TypeChecker-MemberAccess" << endl;
 	_memberAccess.expression().accept(*this);
 	TypePointer exprType = type(_memberAccess.expression());
 	ASTString const& memberName = _memberAccess.memberName();
+
+	//cout << "exprType:" << exprType->toString() << endl;	// contract C
+	//cout << "memberName: " << memberName << endl;		// funcA
+
 
 	auto& annotation = _memberAccess.annotation();
 
@@ -2690,8 +2695,18 @@ bool TypeChecker::visit(MemberAccess const& _memberAccess)
 
 	annotation.isConstant = false;
 
+	// modify here - contract
+	/*if(dynamic_cast<ContractType const*>(exprType)) {
+		auto it = dynamic_cast<ContractType const*>(exprType);
+		for(auto [decl, offset, type]: it->stateVariables()) {
+			if(decl->name() == memberName) cout << "pass" << endl;
+			break;
+		}
+	}*/
+
 	if (possibleMembers.empty())
 	{
+
 		if (initialMemberCount == 0 && !dynamic_cast<ArraySliceType const*>(exprType))
 		{
 			// Try to see if the member was removed because it is only available for storage types.
@@ -2824,6 +2839,8 @@ bool TypeChecker::visit(MemberAccess const& _memberAccess)
 					requiredLookup = VirtualLookup::Super;
 	}
 
+	cout << "here1" << endl;
+
 	annotation.requiredLookup = requiredLookup;
 
 	if (auto const* structType = dynamic_cast<StructType const*>(exprType))
@@ -2927,6 +2944,8 @@ bool TypeChecker::visit(MemberAccess const& _memberAccess)
 	if (!annotation.isPure.set())
 		annotation.isPure = false;
 
+	cout << "isPure: " << annotation.isPure.set() << endl;
+	cout << "quit" << endl;
 	return false;
 }
 
@@ -3141,6 +3160,7 @@ vector<Declaration const*> TypeChecker::cleanOverloadedDeclarations(
 
 bool TypeChecker::visit(Identifier const& _identifier)
 {
+	cout << "enter Typechecker::visit-Identifier" << endl;
 	IdentifierAnnotation& annotation = _identifier.annotation();
 
 	if (!annotation.referencedDeclaration)

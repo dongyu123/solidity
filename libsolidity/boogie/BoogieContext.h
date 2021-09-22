@@ -119,6 +119,12 @@ public:
 	};
 	Assign m_assign;
 
+	// modify here - contract
+	boogie::Expr::Ref addr;
+	bool isAnotherContract;	// 判断该condition是否要添加到集合中
+	std::vector<BoogieContext::DocTagExpr> docExprs;	// 要添加到另一个合约的condition的集合，应该跟着函数走，每一个函数清空一次
+	bool isContractAcc = false; // 判断在call的时候是否要加入condition
+
 
 	/**
 	 * Global context with magic variables for verification-specific functions such as sum. We

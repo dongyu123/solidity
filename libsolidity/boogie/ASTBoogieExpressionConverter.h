@@ -19,6 +19,7 @@ class ASTBoogieExpressionConverter : private ASTConstVisitor
 private:
 
 	BoogieContext& m_context;
+	std::vector<BoogieContext>& m_contexts;	// modify here - contract
 	bool m_insideSpec; // Indicates if a specification annotation is being parsed
 
 	// Helper variables to pass information between the visit methods
@@ -35,6 +36,7 @@ private:
 	std::vector<boogie::Stmt::Ref> m_newStatements; // New statements
 	std::list<boogie::Decl::Ref> m_newDecls; // New declarations
 	ExprConditionStore m_conditions; // Type checking/overflow conditions
+
 
 	/**
 	 * Helper method to add a type checking condition for an expression with a given type.
@@ -87,7 +89,7 @@ public:
 	/**
 	 * Create a new instance with a given context.
 	 */
-	ASTBoogieExpressionConverter(BoogieContext& context);
+	ASTBoogieExpressionConverter(BoogieContext& context, std::vector<BoogieContext>& contexts); // modify here - contract
 
 	/**
 	 * Convert a Solidity Expression into a Boogie expression.

@@ -21,7 +21,7 @@ private:
 	BoogieContext& m_context;
 
 	// modify here - contract
-	std::vector<BoogieContext*> contexts;
+	std::vector<BoogieContext> m_contexts;
 
 	// Helper variables to pass information between the visit methods
 	FunctionDefinition const* m_currentFunc; // Function currently being processed
@@ -200,7 +200,7 @@ public:
 	/**
 	 * Create a new instance with a given context.
 	 */
-	ASTBoogieConverter(BoogieContext& context);
+	ASTBoogieConverter(BoogieContext& context, std::vector<BoogieContext>& contexts);	// modify here - contract
 
 	/**
 	 * Convert a node and add it to the actual Boogie program.

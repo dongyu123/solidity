@@ -41,7 +41,7 @@ class Type; // forward
  * @note must not be destroyed or moved during compilation as its objects can be referenced from
  * other objects.
  */
-class GlobalContext: private boost::noncopyable
+class GlobalContext//: private boost::noncopyable // modify here - contract
 {
 public:
 	GlobalContext();

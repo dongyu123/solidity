@@ -40,7 +40,7 @@ std::ostream& sout()
 
 bg::Expr::Ref ASTBoogieConverter::convertExpression(Expression const& _node)
 {
-	ASTBoogieExpressionConverter::Result result = ASTBoogieExpressionConverter(m_context).convert(_node, false);
+	ASTBoogieExpressionConverter::Result result = ASTBoogieExpressionConverter(m_context, m_contexts).convert(_node, false);
 
 	m_localDecls.insert(end(m_localDecls), begin(result.newDecls), end(result.newDecls));
 	for (auto tcc: result.conditions.getConditions(ExprConditionStore::ConditionType::TYPE_CHECKING_CONDITION))
@@ -521,7 +521,7 @@ void ASTBoogieConverter::processSpecificationExpression(ASTPointer<Expression> e
 
 	// Convert expression to Boogie representation
 	sout() << "function processSpec: enter convert" << endl;
-	auto convResult = ASTBoogieExpressionConverter(m_context).convert(*expr, true);
+	auto convResult = ASTBoogieExpressionConverter(m_context, m_contexts).convert(*expr, true);
 	// Add index bounds if array is there
 	if (specInfo.arrayId)
 	{
@@ -534,7 +534,7 @@ void ASTBoogieConverter::processSpecificationExpression(ASTPointer<Expression> e
 		{
 			auto arrayBaseType = arrayTypeSpec->baseType();
 			auto arrayBaseTypeBg = m_context.toBoogieType(arrayBaseType, specInfo.arrayId.get());
-			auto arrayExpr = ASTBoogieExpressionConverter(m_context).convert(*specInfo.arrayId, false).expr;
+			auto arrayExpr = ASTBoogieExpressionConverter(m_context, m_contexts).convert(*specInfo.arrayId, false).expr;
 			auto arrayLocation = arrayTypeSpec->location();
 			if (arrayLocation == DataLocation::Memory || arrayLocation == DataLocation::CallData)
 				arrayExpr = m_context.getMemArray(arrayExpr, arrayBaseTypeBg);
@@ -778,6 +778,7 @@ std::vector<BoogieContext::DocTagExpr> ASTBoogieConverter::getExprsFromDocTags(A
 	{
 		for (auto docTag: _annot.docTags)
 		{
+			m_context.isAnotherContract = false;
 			if (docTag.first == "notice" && boost::starts_with(docTag.second.content, tag)) // Find expressions with the given tag
 			{
 				BoogieContext::DocTagExpr expr;
@@ -785,15 +786,25 @@ std::vector<BoogieContext::DocTagExpr> ASTBoogieConverter::getExprsFromDocTags(A
 				{
 					if (parseSpecificationCasesExpr(docTag.second.content.substr(tag.length() + 1), _node, _scope, expr))
 						exprs.push_back(expr);
+					if(m_context.isAnotherContract == true) {	// modify here - contract
+						m_context.docExprs.push_back(expr);
+					}
 				}
 				else
 				{
-					if (parseExpr(docTag.second.content.substr(tag.length() + 1), _node, _scope, expr))
-						exprs.push_back(expr);
+					if (parseExpr(docTag.second.content.substr(tag.length() + 1), _node, _scope, expr)) {
+						// m_context.isContractAccess是在memberAccess中被赋值为1的，为了避免其他的expr不被加入到docExprs中，所以这里要判断
+						// 但是在call之前也会再次进入这个函数，所以会把isContractAccess赋值为0，call的时候就会加不到postcondition中
+						if(m_context.isAnotherContract == true) {	// modify here - contract
+							m_context.docExprs.push_back(expr);
+						} else exprs.push_back(expr);
+					}
 				}
 			}
+
 		}
 	}
+
 	sout() << "quit function: getExprsFromDocTags" << endl;
 	return exprs;
 }
@@ -1076,8 +1087,8 @@ void ASTBoogieConverter::processFuncModifiersAndBody()
 	}
 }
 
-ASTBoogieConverter::ASTBoogieConverter(BoogieContext& context) :
-				m_context(context),
+ASTBoogieConverter::ASTBoogieConverter(BoogieContext& context, vector<BoogieContext>& contexts) :	// modify here - contract
+				m_context(context), m_contexts(contexts),
 				m_currentFunc(nullptr),
 				m_currentModifier(0),
 				m_currentRet(nullptr),
@@ -1167,10 +1178,16 @@ bool ASTBoogieConverter::visit(ContractDefinition const& _node)
 	if(m_context.m_lhs != nullptr) createPrefuncProc(_node); // modify here
 
 	// modify here - contract
-	BoogieContext *p = &m_context;
-	contexts.push_back(p);
-	sout() << contexts.size() << endl;
-
+	sout() << m_context.currentContractInvars().size() << endl;
+	BoogieContext p = m_context;
+	m_contexts.push_back(p);
+	for(auto del: m_contexts[m_contexts.size()-1].getDecls()) {
+		/*if(dynamic_cast<bg::ProcDecl const*>(del.get())) {
+			sout() << del->getName() << endl;
+		}*/
+		sout() << del->getName() << endl;
+	}
+	sout() << "ContractDefinition ends" << endl;
 
 
 	// Rest current contract (removes this, super)
@@ -1292,8 +1309,12 @@ bool ASTBoogieConverter::visit(FunctionDefinition const& _node)
 	params.push_back({m_context.boogieMsgSender()->getRefTo(), m_context.boogieMsgSender()->getType() });// msg.sender
 	params.push_back({m_context.boogieMsgValue()->getRefTo(), m_context.boogieMsgValue()->getType() }); // msg.value
 	// Add original parameters of the function
-	for (auto par: _node.parameters())
+	for (auto par: _node.parameters()) {
+		//m_context.addr = bg::Expr::id(m_context.mapDeclName(*par));	// modify here - contract
 		params.push_back({bg::Expr::id(m_context.mapDeclName(*par)), m_context.toBoogieType(par->type(), par.get())});
+		//params.push_back({m_context.addr, m_context.toBoogieType(par->type(), par.get())});
+	}
+
 
 	// Return values
 	vector<bg::Binding> rets;
@@ -1367,6 +1388,9 @@ bool ASTBoogieConverter::visit(FunctionDefinition const& _node)
 				m_context.boogieBalance()->getRefTo(),
 					bg::Expr::arrupd(m_context.boogieBalance()->getRefTo(), m_context.boogieThis()->getRefTo(), addResult.expr)));
 	}
+
+	// modify here - contract
+	getExprsFromDocTags(_node, _node.annotation(), &_node, { ASTBoogieUtils::DOCTAG_POSTCOND });
 
 	// Modifiers need to be inlined
 	m_currentModifier = 0;
@@ -1469,6 +1493,8 @@ bool ASTBoogieConverter::visit(FunctionDefinition const& _node)
 	}
 	for (auto post: getExprsFromDocTags(_node, _node.annotation(), &_node, { ASTBoogieUtils::DOCTAG_POSTCOND, ASTBoogieUtils::DOCTAG_SPECIFICATION_CASES }))
 	{
+		// modify here - contract
+		//if(m_context.isAnotherContract) continue;
 		procDecl->getEnsures().push_back(bg::Specification::spec(post.expr,
 							ASTBoogieUtils::createAttrs(_node.location(), "Postcondition '" + post.exprStr + "' might not hold at end of function.", *m_context.currentScanner())));
 
@@ -1495,6 +1521,7 @@ bool ASTBoogieConverter::visit(FunctionDefinition const& _node)
 																	 ASTBoogieUtils::createAttrs(_node.location(), "Postcondition '" + postexp->toBgString() + "' might not hold at end of function.", *m_context.currentScanner())));
 		}
 	}
+
 
 	// TODO: check that no new sum variables were introduced
 

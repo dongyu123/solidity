@@ -306,7 +306,6 @@ string Type::identifier() const
 
 TypePointer Type::commonType(Type const* _a, Type const* _b)
 {
-	cout << "enter function commonType" << endl;
 	if (!_a || !_b)
 		return nullptr;
 	else if (_a->mobileType() && _b->isImplicitlyConvertibleTo(*_a->mobileType()))
@@ -327,9 +326,12 @@ MemberList const& Type::members(ASTNode const* _currentScope) const
 			dynamic_cast<ContractDefinition const*>(_currentScope),
 		"");
 		MemberList::MemberMap members = nativeMembers(_currentScope);
+		cout << "size1: " << members.size() << endl;
 		if (_currentScope)
 			members += boundFunctions(*this, *_currentScope);
+		cout << "size2: " << members.size() << endl;
 		m_members[_currentScope] = make_unique<MemberList>(move(members));
+
 	}
 	return *m_members[_currentScope];
 }
@@ -363,6 +365,7 @@ TypePointer Type::fullEncodingType(bool _inLibraryCall, bool _encoderV2, bool) c
 
 MemberList::MemberMap Type::boundFunctions(Type const& _type, ASTNode const& _scope)
 {
+	cout << "here-boundFunction" << endl;
 	vector<UsingForDirective const*> usingForDirectives;
 	if (auto const* sourceUnit = dynamic_cast<SourceUnit const*>(&_scope))
 		usingForDirectives += ASTNode::filteredNodes<UsingForDirective>(sourceUnit->nodes());
@@ -410,6 +413,7 @@ MemberList::MemberMap Type::boundFunctions(Type const& _type, ASTNode const& _sc
 				dynamic_cast<FunctionType const&>(*function->typeViaContractName()).asBoundFunction();
 			if (_type.isImplicitlyConvertibleTo(*fun->selfType()))
 				members.emplace_back(function->name(), fun, function);
+
 		}
 	}
 
@@ -2148,6 +2152,7 @@ string ContractType::canonicalName() const
 MemberList::MemberMap ContractType::nativeMembers(ASTNode const*) const
 {
 	MemberList::MemberMap members;
+	cout << "enter-ContractType:native" << endl;
 	if (m_super)
 	{
 		// add the most derived of all functions which are visible in derived contracts
@@ -2177,13 +2182,27 @@ MemberList::MemberMap ContractType::nativeMembers(ASTNode const*) const
 					members.emplace_back(function->name(), functionType, function);
 			}
 	}
-	else if (!m_contract.isLibrary())
-		for (auto const& it: m_contract.interfaceFunctions())
+	else if (!m_contract.isLibrary()) {
+		// modify here - contract
+		for(auto val: m_contract.stateVariables()) {
+			members.emplace_back(
+				val->name(),
+				dynamic_cast<IntegerType const*>(val->type()),
+				dynamic_cast<Declaration const*>(val)
+			);
+		}
+
+		for (auto const& it: m_contract.interfaceFunctions()) {
 			members.emplace_back(
 				it.second->declaration().name(),
 				it.second->asExternallyCallableFunction(m_contract.isLibrary()),
 				&it.second->declaration()
 			);
+		}
+
+	}
+	cout << "here" << endl;
+
 
 	return members;
 }
@@ -3329,6 +3348,7 @@ FunctionTypePointer FunctionType::interfaceFunctionType() const
 
 MemberList::MemberMap FunctionType::nativeMembers(ASTNode const* _scope) const
 {
+	cout << "enter nativeMembers: FunctionType" << endl;
 	switch (m_kind)
 	{
 	case Kind::Declaration:
@@ -3852,15 +3872,24 @@ vector<tuple<string, TypePointer>> TypeType::makeStackItems() const
 
 MemberList::MemberMap TypeType::nativeMembers(ASTNode const* _currentScope) const
 {
+	cout << "enter nativeMembers: TypeType" << endl;
 	MemberList::MemberMap members;
 	if (m_actualType->category() == Category::Contract)
 	{
+		/*for(auto val: m_contract.stateVariables()) {
+			members.emplace_back(
+				val->name(),
+				dynamic_cast<IntegerType const*>(val->type()),
+				dynamic_cast<Declaration const*>(val)
+			);
+		}*/
 		auto const* contractScope = dynamic_cast<ContractDefinition const*>(_currentScope);
 		ContractDefinition const& contract = dynamic_cast<ContractType const&>(*m_actualType).contractDefinition();
 		bool inDerivingScope = contractScope && contractScope->derivesFrom(contract);
 
 		for (auto const* declaration: contract.declarations())
 		{
+			cout << "decl name: " << declaration->name() << endl;
 			if (dynamic_cast<ModifierDefinition const*>(declaration))
 				continue;
 			if (declaration->name().empty())
@@ -3879,8 +3908,13 @@ MemberList::MemberMap TypeType::nativeMembers(ASTNode const* _currentScope) cons
 			else if (
 				(contract.isLibrary() && declaration->isVisibleAsLibraryMember()) ||
 				declaration->isVisibleViaContractTypeAccess()
-			)
+			) {
 				members.emplace_back(declaration->name(), declaration->typeViaContractName(), declaration);
+			} else if(auto const* variableDefinition = dynamic_cast<VariableDeclaration const*>(declaration); variableDefinition) {
+				cout << "var name: " << declaration->name() << endl;
+				members.emplace_back(variableDefinition->name(), variableDefinition->type(), variableDefinition);
+			}
+
 		}
 	}
 	else if (m_actualType->category() == Category::Enum)
