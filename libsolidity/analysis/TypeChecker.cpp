@@ -2944,8 +2944,7 @@ bool TypeChecker::visit(MemberAccess const& _memberAccess)
 	if (!annotation.isPure.set())
 		annotation.isPure = false;
 
-	cout << "isPure: " << annotation.isPure.set() << endl;
-	cout << "quit" << endl;
+	cout << "quit MemberAccess" << endl;
 	return false;
 }
 

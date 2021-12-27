@@ -53,7 +53,7 @@ contract BecTokenSimplified {
         require(_value > 0 && balances[msg.sender] >= _value);
 
         balances[msg.sender] = balances[msg.sender].sub(_value);
-        balances[_receiver] = balances[_receiver].add(_value);
+        balances[_receiver] = balances[_receiver].sub(_value);
         return true;
     }
 

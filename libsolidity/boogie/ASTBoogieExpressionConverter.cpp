@@ -192,19 +192,38 @@ bool ASTBoogieExpressionConverter::visit(Assignment const& _node)
 	{
 		addSideEffect(stmt);
 		// modify here
-		//auto it = BoogieContext::assign(stmt, lhsExpr, rhsExpr);
 		if(m_context.isFuncA == 1) {
 			// 如果左边的变量是状态变量，就加到assignStmts中
-			auto left = dynamic_cast<Identifier const*>(&_node.leftHandSide());
-			auto leftdecl = left->annotation().referencedDeclaration;
-			auto varDecl = dynamic_cast<VariableDeclaration const*>(leftdecl);
-			if(varDecl->isStateVariable()) {
-				m_context.m_assign.assignStmts.push_back(stmt);
-				m_context.m_assign.lhs = lhsExpr;
-				m_context.m_assign.rhs = rhsExpr;
-				//m_context.m_assignStmts.push_back(stmt);
-				stmt->print(cout);
-				cout << endl;
+			if(auto left1 = dynamic_cast<IndexAccess const*>(&_node.leftHandSide())){	// 如果是个数组
+				auto base = dynamic_cast<Identifier const*>(&left1->baseExpression());
+				auto baseDecl = dynamic_cast<VariableDeclaration const*>(base->annotation().referencedDeclaration);
+				if(!baseDecl->isStateVariable()) continue;
+				auto index = dynamic_cast<Identifier const*>(left1->indexExpression());
+				auto indexDecl = dynamic_cast<VariableDeclaration const*>(index->annotation().referencedDeclaration);
+				if(indexDecl->isLocalVariable()) {
+					bg::Decl::Ref indexRef = bg::Decl::variable(indexDecl->name(),
+																   m_context.toBoogieType(indexDecl->type(), nullptr));		// 增加状态变量
+					m_context.addDecl(indexRef);
+					auto right = dynamic_cast<Identifier const*>(&_node.rightHandSide());
+					auto rightDecl = dynamic_cast<VariableDeclaration const*>(right->annotation().referencedDeclaration);
+					bg::Decl::Ref rightRef = bg::Decl::variable(rightDecl->name(), m_context.toBoogieType(rightDecl->type(), nullptr));
+					m_context.addDecl(rightRef);
+					m_context.m_assign.lhs = bg::Expr::arrsel(
+						bg::Expr::arrsel(bg::Expr::id(m_context.mapDeclName(*baseDecl)), m_context.boogieThis()->getRefTo()), bg::Expr::id(indexRef->getName()));	//base[this][index]
+					m_context.m_assign.rhs = bg::Expr::id(rightRef->getName());
+					bg::Stmt::Ref valueAssign = bg::Stmt::assign(m_context.m_assign.lhs, m_context.m_assign.rhs);
+					m_context.m_assign.assignStmts.push_back(valueAssign);
+				}
+
+			} else if(auto left2 = dynamic_cast<Identifier const*>(&_node.leftHandSide())) {	// 如果是个变量并且是状态变量
+				auto varDecl = dynamic_cast<VariableDeclaration const*>(left2->annotation().referencedDeclaration);
+				if(varDecl->isStateVariable()) {
+					m_context.m_assign.assignStmts.push_back(stmt);
+					m_context.m_assign.lhs = lhsExpr;
+					m_context.m_assign.rhs = rhsExpr;;
+					//stmt->print(cout);
+					//cout << endl;
+				}
 			}
 		}
 	}
@@ -871,27 +890,39 @@ bool ASTBoogieExpressionConverter::visit(FunctionCall const& _node)
 	// modify here - contract
 	cout << "isContractAccess: " << m_context.isContractAcc << endl;
 	if(m_context.isContractAcc) {
-		for(auto arg: regularArgs) {
-			cout << "arg: " << arg->toBgString() << endl;	// amount#20
-		}
-		//todo: 这里的m_contexts需要处理
-		for(auto del: m_contexts[0].getDecls()) {
-			if(auto procDecl = dynamic_cast<bg::ProcDecl const*>(del.get()); procDecl) {
-				if(funcName == procDecl->getName()) {
-					auto it = dynamic_pointer_cast<bg::ProcDecl>(del);
-					for(auto para: it->getParameters()) {
-						cout << para.id << endl;	// amount#4
+		//for(auto arg: regularArgs) cout << "arg: " << arg->toBgString() << endl;	// amount#20
+		for(auto context: m_contexts) {	// 这里不应该是遍历，而是应该直接获取C1
+			for(auto del: context.getDecls()) {
+				if(auto procDecl = dynamic_pointer_cast<bg::ProcDecl>(del); procDecl) {
+					if(funcName == procDecl->getName()) {
+						//for(auto para: it->getParameters()) cout << para.id << endl;	// amount#4
+						for(auto docExpr: m_context.docExprs) {	//invariant也放到了docExpr中
+							if(docExpr.type == BoogieContext::Flag::Invariant) {
+								context.addGlobalComment("Contract invariant: " + docExpr.exprStr);
+								context.currentContractInvars().push_back(docExpr);
+								procDecl->getRequires().push_back(bg::Specification::spec(docExpr.expr,
+																						  ASTBoogieUtils::createAttrs(_node.location(), "Invariant '" + docExpr.exprStr + "' might not hold when entering function.", *context.currentScanner())));
+								procDecl->getEnsures().push_back(bg::Specification::spec(docExpr.expr,
+																						 ASTBoogieUtils::createAttrs(_node.location(), "Invariant '" + docExpr.exprStr + "' might not hold at end of function.", *context.currentScanner())));
+							} else procDecl->getEnsures().push_back(bg::Specification::spec(docExpr.expr,
+																			   ASTBoogieUtils::createAttrs(_node.location(), "Postcondition '" + docExpr.exprStr + "' might not hold at end of function.", *context.currentScanner())));
+						}
 					}
-					for(auto docExpr: m_context.docExprs) {
-						it->getEnsures().push_back(bg::Specification::spec(docExpr.expr,
-																				 ASTBoogieUtils::createAttrs(_node.location(), "Postcondition '" + docExpr.exprStr + "' might not hold at end of function.", *m_contexts[0].currentScanner())));
-					}
-
+					/*if(procDecl->getName().find("__constructor") != string::npos) {
+						for(auto docExpr: m_context.docExprs) {	//invariant也放到了docExpr中
+							if(docExpr.type == BoogieContext::Flag::Invariant) {
+								//procDecl->getRequires().push_back(bg::Specification::spec(docExpr.expr,
+																						  //ASTBoogieUtils::createAttrs(_node.location(), "Invariant '" + docExpr.exprStr + "' might not hold when entering function.", *context.currentScanner())));
+								//procDecl->getEnsures().push_back(bg::Specification::spec(docExpr.expr,
+																						 //ASTBoogieUtils::createAttrs(_node.location(), "Invariant '" + docExpr.exprStr + "' might not hold at end of function.", *context.currentScanner())));
+							}
+						}
+					}*/
 				}
 			}
 		}
-	}
 
+	}
 
 	// Result is the none, single variable, or a tuple of variables
 	if (returnVars.size() == 0)
@@ -942,6 +973,7 @@ bool ASTBoogieExpressionConverter::visit(FunctionCall const& _node)
 	if (funcName == ASTBoogieUtils::CALL.boogie && msgValue != defaultMsgValue)
 		functionCallRevertBalance(msgValue);
 
+	cout << "quit visit-functioncall" << endl;
 	return false;
 }
 
@@ -1320,9 +1352,6 @@ bool ASTBoogieExpressionConverter::visit(MemberAccess const& _node)
 
 	// Get expression recursively
 	_node.expression().accept(*this);
-	cout << "what: " << m_currentExpr->toBgString() << endl;
-	cout << _node.memberName() << endl;
-	cout << _node.annotation().type->toString() << endl;
 
 	bg::Expr::Ref expr = m_currentExpr;
 	if (m_currentExpr->isError())
@@ -1465,9 +1494,6 @@ bool ASTBoogieExpressionConverter::visit(MemberAccess const& _node)
 		return false;
 	}
 	m_currentExpr = bg::Expr::id(m_context.mapDeclName(*_node.annotation().referencedDeclaration));
-	cout << _node.annotation().referencedDeclaration->name() << endl;
-	cout << _node.annotation().referencedDeclaration->type()->toString() << endl;
-	cout << "here:" << m_currentExpr->toBgString() << endl;
 	cout << "isContract: " << isContract << endl;
 	// modify here - contract
 	if(isContract) {
@@ -1536,6 +1562,7 @@ bool ASTBoogieExpressionConverter::visit(MemberAccess const& _node)
 
 	cout << m_currentExpr->toBgString() << endl;
 	cout << "quit here" << endl;
+	cout << "quit visit-memberaccess" << endl;
 	return false;
 }
 
@@ -1674,23 +1701,37 @@ bool ASTBoogieExpressionConverter::visit(Identifier const& _node)
 		}
 	}
 
-	string declName;
-	cout << "isContactAcc:" << m_context.isContractAcc << endl;
-	if(m_context.isContractAcc) {
-		declName = m_contexts[0].mapDeclName(*(decl));
-	} else declName = m_context.mapDeclName(*(decl));
+	string declName = m_context.mapDeclName(*(decl));
 
 	// State variables must be referenced by accessing the map
 	// Unless it's a declaration within a specification (scope == nullptr)
-	if ((varDecl && varDecl->isStateVariable())) {
+	if (varDecl && varDecl->isStateVariable()) {
+		// modify here - contract
 		if(m_context.isContractAcc) m_currentExpr = bg::Expr::arrsel(bg::Expr::id(declName), m_contexts[0].boogieThis()->getRefTo());
 		else m_currentExpr = bg::Expr::arrsel(bg::Expr::id(declName), m_context.boogieThis()->getRefTo());
 	}
 	// Other identifiers can be referenced by their name
 	// 如果不是状态变量，说明是函数体内的变量，那么就直接根据name找到即可，是用共享指针
 	else {
-		if(m_context.isContractAcc) m_currentExpr = bg::Expr::id(declName);
-		else m_currentExpr = bg::Expr::id(declName);
+		// modify here - contract
+		bool flag = false;
+		if(m_context.isAnotherContract) {
+			cout << "declName: " << declName << endl;
+			for(auto context: m_contexts) {
+				for(auto del: context.getDecls()) {	// 这里要判断一下contract，是不是condition中的contract
+					if(auto it = dynamic_pointer_cast<bg::ProcDecl>(del); it) {
+						for(auto para: it->getParameters()) {
+							if(para.id->toBgString().find(_node.name()) != string::npos) {	// 纯靠名字匹配识别
+								m_currentExpr = para.id;
+								flag = true;
+								break;
+							}
+						}
+					}
+				}
+			}
+		}
+		if(!flag) m_currentExpr = bg::Expr::id(declName); // 如果在另一个合约中没有找到，那么就也映射到现在的这个
 	}
 
 

@@ -784,27 +784,31 @@ std::vector<BoogieContext::DocTagExpr> ASTBoogieConverter::getExprsFromDocTags(A
 				BoogieContext::DocTagExpr expr;
 				if (tag == ASTBoogieUtils::DOCTAG_SPECIFICATION_CASES)
 				{
-					if (parseSpecificationCasesExpr(docTag.second.content.substr(tag.length() + 1), _node, _scope, expr))
-						exprs.push_back(expr);
-					if(m_context.isAnotherContract == true) {	// modify here - contract
-						m_context.docExprs.push_back(expr);
+					if (parseSpecificationCasesExpr(docTag.second.content.substr(tag.length() + 1), _node, _scope, expr)) {
+						if(tag == ASTBoogieUtils::DOCTAG_POSTCOND) expr.type = BoogieContext::Flag::PostCondition;
+						if(tag == ASTBoogieUtils::DOCTAG_PRECOND) expr.type = BoogieContext::Flag::PreCondition;
+						if(tag == ASTBoogieUtils::DOCTAG_CONTRACT_INVAR) expr.type = BoogieContext::Flag::Invariant;
+						if(m_context.isAnotherContract == true) m_context.docExprs.push_back(expr);	// modify here - contract
+						else exprs.push_back(expr);
 					}
 				}
 				else
 				{
 					if (parseExpr(docTag.second.content.substr(tag.length() + 1), _node, _scope, expr)) {
+						if(tag == ASTBoogieUtils::DOCTAG_POSTCOND) expr.type = BoogieContext::Flag::PostCondition;
+						if(tag == ASTBoogieUtils::DOCTAG_PRECOND) expr.type = BoogieContext::Flag::PreCondition;
+						if(tag == ASTBoogieUtils::DOCTAG_CONTRACT_INVAR) expr.type = BoogieContext::Flag::Invariant;
 						// m_context.isContractAccess是在memberAccess中被赋值为1的，为了避免其他的expr不被加入到docExprs中，所以这里要判断
 						// 但是在call之前也会再次进入这个函数，所以会把isContractAccess赋值为0，call的时候就会加不到postcondition中
-						if(m_context.isAnotherContract == true) {	// modify here - contract
-							m_context.docExprs.push_back(expr);
-						} else exprs.push_back(expr);
+						if(m_context.isAnotherContract == true) m_context.docExprs.push_back(expr);	// modify here - contract
+						else exprs.push_back(expr);
 					}
 				}
 			}
 
 		}
 	}
-
+	m_context.isAnotherContract = false;
 	sout() << "quit function: getExprsFromDocTags" << endl;
 	return exprs;
 }
@@ -1128,6 +1132,7 @@ bool ASTBoogieConverter::visit(ImportDirective const& _node)
 
 bool ASTBoogieConverter::visit(ContractDefinition const& _node)
 {
+	sout() << "Hello!!!!!!!!!!!!!" << endl;
 	rememberScope(_node);
 
 	// Set current contract (updates this/super)
@@ -1178,14 +1183,12 @@ bool ASTBoogieConverter::visit(ContractDefinition const& _node)
 	if(m_context.m_lhs != nullptr) createPrefuncProc(_node); // modify here
 
 	// modify here - contract
-	sout() << m_context.currentContractInvars().size() << endl;
 	BoogieContext p = m_context;
 	m_contexts.push_back(p);
 	for(auto del: m_contexts[m_contexts.size()-1].getDecls()) {
-		/*if(dynamic_cast<bg::ProcDecl const*>(del.get())) {
+		if(dynamic_cast<bg::ProcDecl const*>(del.get())) {
 			sout() << del->getName() << endl;
-		}*/
-		sout() << del->getName() << endl;
+		}
 	}
 	sout() << "ContractDefinition ends" << endl;
 
@@ -1285,6 +1288,7 @@ bool ASTBoogieConverter::visit(OverrideSpecifier const& _node)
 
 bool ASTBoogieConverter::visit(FunctionDefinition const& _node)
 {
+	sout() << "enter visit-FunctionDefinition: " << (&_node)->name() << endl;
 	rememberScope(_node);
 
 	// Solidity functions are mapped to Boogie procedures
@@ -1396,6 +1400,7 @@ bool ASTBoogieConverter::visit(FunctionDefinition const& _node)
 	m_currentModifier = 0;
 	processFuncModifiersAndBody();
 
+
 	// Print errors related to the function
 	m_context.printErrors(cerr);
 
@@ -1464,7 +1469,7 @@ bool ASTBoogieConverter::visit(FunctionDefinition const& _node)
 			}
 			if (!_node.isConstructor())
 			{
-				if(invar.exprStr.find("==>")) { // modify here
+				if(invar.exprStr.find("==>") != string::npos) { // modify here
 					continue;
 				}
 				procDecl->getRequires().push_back(bg::Specification::spec(invar.expr,

@@ -38,6 +38,7 @@ procedure {:sourceloc "test/solc-verify/examples/test.sol", 10, 5} {:message "C:
 procedure {:sourceloc "test/solc-verify/examples/test.sol", 15, 5} {:message "C::funcB"} funcB#20(__this: address_t, __msg_sender: address_t, __msg_value: int)
 	requires {:sourceloc "test/solc-verify/examples/test.sol", 15, 5} {:message "Precondition 'x != 0' might not hold when entering function."} (x#4[__this] != 0);
 
+	ensures {:sourceloc "test/solc-verify/examples/test.sol", 15, 5} {:message "Postcondition '(x#4[__this] == 1)' might not hold at end of function."} (x#4[__this] == 1);
 	ensures {:sourceloc "test/solc-verify/examples/test.sol", 15, 5} {:message "Function might modify balances illegally"} (__balance == old(__balance));
 	ensures {:sourceloc "test/solc-verify/examples/test.sol", 15, 5} {:message "Function might modify 'x' illegally"} (x#4[__this] == old(x#4[__this]));
 	ensures {:sourceloc "test/solc-verify/examples/test.sol", 15, 5} {:message "Function might modify 'y' illegally"} (y#6[__this] == old(y#6[__this]));
@@ -53,6 +54,7 @@ procedure {:sourceloc "test/solc-verify/examples/test.sol", 15, 5} {:message "C:
 // 
 // Function: funcC : function ()
 procedure {:sourceloc "test/solc-verify/examples/test.sol", 20, 5} {:message "C::funcC"} funcC#31(__this: address_t, __msg_sender: address_t, __msg_value: int)
+	ensures {:sourceloc "test/solc-verify/examples/test.sol", 20, 5} {:message "Postcondition '(x#4[__this] == 1)' might not hold at end of function."} (x#4[__this] == 1);
 	ensures {:sourceloc "test/solc-verify/examples/test.sol", 20, 5} {:message "Function might modify balances illegally"} (__balance == old(__balance));
 	ensures {:sourceloc "test/solc-verify/examples/test.sol", 20, 5} {:message "Function might modify 'x' illegally"} (x#4[__this] == (if true then x#4[__this] else old(x#4[__this])));
 	ensures {:sourceloc "test/solc-verify/examples/test.sol", 20, 5} {:message "Function might modify 'y' illegally"} (y#6[__this] == old(y#6[__this]));
@@ -72,6 +74,7 @@ procedure {:sourceloc "test/solc-verify/examples/test.sol", 20, 5} {:message "C:
 // 
 // Function: funcD : function ()
 procedure {:sourceloc "test/solc-verify/examples/test.sol", 26, 5} {:message "C::funcD"} funcD#43(__this: address_t, __msg_sender: address_t, __msg_value: int)
+	ensures {:sourceloc "test/solc-verify/examples/test.sol", 26, 5} {:message "Postcondition '(x#4[__this] == 1)' might not hold at end of function."} (x#4[__this] == 1);
 	ensures {:sourceloc "test/solc-verify/examples/test.sol", 26, 5} {:message "Function might modify balances illegally"} (__balance == old(__balance));
 	ensures {:sourceloc "test/solc-verify/examples/test.sol", 26, 5} {:message "Function might modify 'x' illegally"} (x#4[__this] == (if true then x#4[__this] else old(x#4[__this])));
 	ensures {:sourceloc "test/solc-verify/examples/test.sol", 26, 5} {:message "Function might modify 'y' illegally"} (y#6[__this] == old(y#6[__this]));
@@ -90,6 +93,7 @@ procedure {:sourceloc "test/solc-verify/examples/test.sol", 26, 5} {:message "C:
 // 
 // Function: funcE : function ()
 procedure {:sourceloc "test/solc-verify/examples/test.sol", 32, 5} {:message "C::funcE"} funcE#58(__this: address_t, __msg_sender: address_t, __msg_value: int)
+	ensures {:sourceloc "test/solc-verify/examples/test.sol", 32, 5} {:message "Postcondition '(x#4[__this] == 1)' might not hold at end of function."} (x#4[__this] == 1);
 	ensures {:sourceloc "test/solc-verify/examples/test.sol", 32, 5} {:message "Function might modify balances illegally"} (__balance == old(__balance));
 	ensures {:sourceloc "test/solc-verify/examples/test.sol", 32, 5} {:message "Function might modify 'x' illegally"} (x#4[__this] == (if true then x#4[__this] else old(x#4[__this])));
 	ensures {:sourceloc "test/solc-verify/examples/test.sol", 32, 5} {:message "Function might modify 'y' illegally"} (y#6[__this] == old(y#6[__this]));

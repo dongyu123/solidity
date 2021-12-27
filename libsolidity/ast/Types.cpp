@@ -2201,7 +2201,6 @@ MemberList::MemberMap ContractType::nativeMembers(ASTNode const*) const
 		}
 
 	}
-	cout << "here" << endl;
 
 
 	return members;
@@ -3889,7 +3888,6 @@ MemberList::MemberMap TypeType::nativeMembers(ASTNode const* _currentScope) cons
 
 		for (auto const* declaration: contract.declarations())
 		{
-			cout << "decl name: " << declaration->name() << endl;
 			if (dynamic_cast<ModifierDefinition const*>(declaration))
 				continue;
 			if (declaration->name().empty())
@@ -3910,8 +3908,7 @@ MemberList::MemberMap TypeType::nativeMembers(ASTNode const* _currentScope) cons
 				declaration->isVisibleViaContractTypeAccess()
 			) {
 				members.emplace_back(declaration->name(), declaration->typeViaContractName(), declaration);
-			} else if(auto const* variableDefinition = dynamic_cast<VariableDeclaration const*>(declaration); variableDefinition) {
-				cout << "var name: " << declaration->name() << endl;
+			} else if(auto const* variableDefinition = dynamic_cast<VariableDeclaration const*>(declaration); variableDefinition) { // modify here - contract
 				members.emplace_back(variableDefinition->name(), variableDefinition->type(), variableDefinition);
 			}
 

@@ -16,7 +16,8 @@ contract C {
 
     /// @notice modifies x if n > 0
     /// @notice modifies y if n > 0
-    function add(int n) public {
+    /// @notice modifies __balances
+    function add(int n) payable public {
         require(n >= 0);
         add_to_x(n);
         /// @notice invariant y <= x

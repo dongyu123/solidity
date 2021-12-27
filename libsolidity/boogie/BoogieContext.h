@@ -83,6 +83,13 @@ public:
 		BV,  // Use bitvectors
 		MOD  // Use integers with modulo operations
 	};
+	// modify here - contract
+	enum Flag
+	{
+		Invariant,
+		PostCondition,
+		PreCondition
+	};
 
 	/** Expression (annotation) parsed from a documentation tag. */
 	struct DocTagExpr {
@@ -90,6 +97,7 @@ public:
 		std::string exprStr; // Expression in original format
 		ASTPointer<Expression> exprSol; // Expression in Solidity AST format
 		ExprConditionStore conditions; // TCCs, OCs, and similar
+		Flag type;	// modify here - contract
 
 		DocTagExpr() {}
 

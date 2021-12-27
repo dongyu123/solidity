@@ -637,10 +637,12 @@ void Return::accept(ASTVisitor& _visitor)
 
 void Return::accept(ASTConstVisitor& _visitor) const
 {
+	std::cout << "enter accept-return" << std::endl;
 	if (_visitor.visit(*this))
 		if (m_expression)
 			m_expression->accept(_visitor);
 	_visitor.endVisit(*this);
+	std::cout << "quit accept-return" << std::endl;
 }
 
 void Throw::accept(ASTVisitor& _visitor)
@@ -829,6 +831,7 @@ void FunctionCall::accept(ASTConstVisitor& _visitor) const
 		listAccept(m_arguments, _visitor);
 	}
 	_visitor.endVisit(*this);
+	std::cout << "quit accept-FunctionCall" << std::endl;
 }
 
 void FunctionCallOptions::accept(ASTVisitor& _visitor)
